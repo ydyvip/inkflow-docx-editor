@@ -1,0 +1,8 @@
+.preview-page {
+  border-left-color: var(--ink-3) !important;
+  cursor: default;
+}
+
+.preview-page .ProseMirror {
+  caret-color: transparent;
+}

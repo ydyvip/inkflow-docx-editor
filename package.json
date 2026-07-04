@@ -1,0 +1,45 @@
+{
+  "name": "inkflow-docx-editor",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "make-sample": "node scripts/make-sample.mjs",
+    "make-rich-sample": "node scripts/make-rich-sample.mjs",
+    "e2e": "node scripts/e2e-test.mjs",
+    "e2e:features": "node scripts/e2e-test-features.mjs"
+  },
+  "dependencies": {
+    "docx": "^9.7.1",
+    "file-saver": "^2.0.5",
+    "jszip": "^3.10.1",
+    "prosemirror-commands": "^1.7.1",
+    "prosemirror-dropcursor": "^1.8.2",
+    "prosemirror-example-setup": "^1.2.3",
+    "prosemirror-gapcursor": "^1.4.1",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-inputrules": "^1.5.1",
+    "prosemirror-keymap": "^1.2.3",
+    "prosemirror-model": "^1.25.9",
+    "prosemirror-schema-basic": "^1.2.4",
+    "prosemirror-schema-list": "^1.5.1",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-tables": "^1.8.5",
+    "prosemirror-transform": "^1.12.0",
+    "prosemirror-view": "^1.42.0",
+    "solid-js": "^1.9.14"
+  },
+  "devDependencies": {
+    "@types/file-saver": "^2.0.7",
+    "@types/node": "^24.13.2",
+    "oxlint": "^1.71.0",
+    "playwright": "^1.61.1",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1",
+    "vite-plugin-solid": "^2.11.12"
+  }
+}
