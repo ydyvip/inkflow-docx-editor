@@ -34,9 +34,9 @@ import { calloutPlugin } from "../plugins/calloutPlugin";
 // 注册内置插件（应用启动时一次性完成，早于 schema 构建）
 pluginRegistry.register(calloutPlugin);
 
-// ---- 1. 给 paragraph / heading 扩展 blockId / styleName / align ----
+// ---- 1. 给 paragraph / heading 扩展 blockId / styleName / align / indent / lineSpacing ----
 
-function withBlockAttrs(base: NodeSpec): NodeSpec {
+function withBlockAttrs(base: NodeSpec, extraParseDOM: NodeSpec["parseDOM"] = []): NodeSpec {
   return {
     ...base,
     attrs: {
@@ -44,23 +44,38 @@ function withBlockAttrs(base: NodeSpec): NodeSpec {
       blockId: { default: null },
       styleName: { default: null },
       align: { default: null },
+      indent: { default: 0 }, // 缩进级别 0-8，一级约等于 Word "增加缩进" 一次（0.5in / 720 twips）
+      lineSpacing: { default: null }, // 行距倍数，如 1 / 1.15 / 1.5 / 2
     },
+    parseDOM: [...(base.parseDOM ?? []), ...extraParseDOM],
     toDOM(node) {
       const baseArr = base.toDOM ? (base.toDOM(node) as unknown as any[]) : ["p", 0];
       const tag = baseArr[0];
       const domAttrs: Record<string, string> = {};
       if (node.attrs.blockId) domAttrs["data-block-id"] = node.attrs.blockId;
       if (node.attrs.styleName) domAttrs["data-style-name"] = node.attrs.styleName;
-      if (node.attrs.align && node.attrs.align !== "left") {
-        domAttrs.style = `text-align:${node.attrs.align}`;
-      }
+
+      const style: string[] = [];
+      if (node.attrs.align && node.attrs.align !== "left") style.push(`text-align:${node.attrs.align}`);
+      if (node.attrs.indent) style.push(`margin-left:${Number(node.attrs.indent) * 36}pt`);
+      if (node.attrs.lineSpacing) style.push(`line-height:${node.attrs.lineSpacing}`);
+      if (style.length) domAttrs.style = style.join(";");
+
       return [tag, domAttrs, 0];
     },
   };
 }
 
+// 标题 7-9 没有原生 HTML 标签（<h7>/<h8>/<h9> 不是标准元素），
+// 但浏览器允许渲染任意标签名；配合 editor.css 里的 display:block 规则即可正常显示为块级标题。
+const HEADING_EXTRA_PARSE_DOM = [
+  { tag: "h7", attrs: { level: 7 } },
+  { tag: "h8", attrs: { level: 8 } },
+  { tag: "h9", attrs: { level: 9 } },
+];
+
 const paragraphSpec = withBlockAttrs(basicSchema.spec.nodes.get("paragraph")!);
-const headingSpec = withBlockAttrs(basicSchema.spec.nodes.get("heading")!);
+const headingSpec = withBlockAttrs(basicSchema.spec.nodes.get("heading")!, HEADING_EXTRA_PARSE_DOM);
 
 const nodesWithBlockIds = basicSchema.spec.nodes.update("paragraph", paragraphSpec).update("heading", headingSpec);
 

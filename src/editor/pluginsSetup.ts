@@ -8,6 +8,7 @@ import { columnResizing, tableEditing } from "prosemirror-tables";
 import { buildInputRules, buildKeymap } from "prosemirror-example-setup";
 import { pluginRegistry } from "../plugins/registry";
 import { highlightPlugin } from "./highlightPlugin";
+import { ensureIdsPlugin } from "./ensureIdsPlugin";
 
 /**
  * Editor 模块的插件装配。
@@ -39,6 +40,7 @@ export function buildEditorPlugins(schema: Schema) {
     tableEditing(),
     history(),
     highlightPlugin(),
+    ensureIdsPlugin(),
     ...pluginExtraPlugins,
   ];
 }

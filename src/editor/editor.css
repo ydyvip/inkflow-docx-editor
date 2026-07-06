@@ -60,6 +60,68 @@
   flex: 1;
 }
 
+.toolbar-label {
+  font-size: 12px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  margin-right: 2px;
+}
+
+.toolbar-format {
+  background: var(--paper);
+}
+
+.toolbar-table {
+  background: var(--accent-wash);
+  border-bottom: 1px solid var(--accent-soft);
+}
+
+.toolbar-select {
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  background: var(--paper);
+  color: var(--ink-1);
+  font-size: 13px;
+  border-radius: 6px;
+  padding: 0 6px;
+  cursor: pointer;
+  max-width: 130px;
+}
+
+.toolbar-select:hover {
+  border-color: var(--accent-soft);
+}
+
+.toolbar-select-heading {
+  max-width: 100px;
+  font-weight: 600;
+}
+
+.toolbar-select-narrow {
+  max-width: 78px;
+}
+
+.toolbar-color {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-2);
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.toolbar-color input[type="color"] {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  cursor: pointer;
+  background: none;
+}
+
 .editor-body {
   flex: 1;
   min-height: 0;
@@ -102,7 +164,13 @@
 .editor-page .ProseMirror h1,
 .editor-page .ProseMirror h2,
 .editor-page .ProseMirror h3,
-.editor-page .ProseMirror h4 {
+.editor-page .ProseMirror h4,
+.editor-page .ProseMirror h5,
+.editor-page .ProseMirror h6,
+.editor-page .ProseMirror h7,
+.editor-page .ProseMirror h8,
+.editor-page .ProseMirror h9 {
+  display: block; /* h7-h9 不是标准 HTML 标签，浏览器默认按 inline 渲染，这里强制块级 */
   font-family: var(--font-display);
   font-weight: 600;
   color: var(--ink-1);
@@ -112,6 +180,16 @@
 .editor-page .ProseMirror h1 { font-size: 2rem; }
 .editor-page .ProseMirror h2 { font-size: 1.6rem; }
 .editor-page .ProseMirror h3 { font-size: 1.3rem; }
+.editor-page .ProseMirror h4 { font-size: 1.15rem; }
+.editor-page .ProseMirror h5 { font-size: 1.05rem; }
+.editor-page .ProseMirror h6 { font-size: 1rem; color: var(--ink-2); }
+.editor-page .ProseMirror h7,
+.editor-page .ProseMirror h8,
+.editor-page .ProseMirror h9 {
+  font-size: 0.95rem;
+  color: var(--ink-2);
+  font-style: italic;
+}
 
 .editor-page .ProseMirror blockquote {
   border-left: 3px solid var(--accent-soft);

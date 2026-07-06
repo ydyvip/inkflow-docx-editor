@@ -5,11 +5,22 @@ import { baseKeymap } from "prosemirror-commands";
 import { keymap } from "prosemirror-keymap";
 import { docSchema } from "../schema";
 import { buildEditorPlugins } from "./pluginsSetup";
-import { buildToolbar, markActive, blockActive } from "./commands";
+import {
+  buildToolbar,
+  buildTableToolbar,
+  markActive,
+  currentBlockAttr,
+  currentDocxStyleAttr,
+  setDocxStyle,
+  setLineSpacing,
+  isInTable,
+} from "./commands";
 import { pluginRegistry } from "../plugins/registry";
 import { highlightPluginKey, type HighlightMeta } from "./highlightPlugin";
 import { OutlineTree, type OutlineItem } from "../outline/OutlineTree";
+import { computeOutline, findNodeById } from "../outline/computeOutline";
 import { CommentsPanel, type CommentItem } from "../comments/CommentsPanel";
+import { FONT_FAMILIES, FONT_SIZES_PT, LINE_SPACING_OPTIONS, HIGHLIGHT_OPTIONS, HEADING_LEVELS } from "./formatOptions";
 import "./editor.css";
 
 export interface EditorApi {
@@ -33,29 +44,16 @@ interface EditorPaneProps {
   onReady?: (api: EditorApi) => void;
 }
 
-function findNodeById(doc: any, id: string): { pos: number; node: any } | null {
-  let result: { pos: number; node: any } | null = null;
-  doc.descendants((node: any, pos: number) => {
-    if (result) return false;
-    if (node.attrs?.blockId === id || node.attrs?.cellId === id) {
-      result = { pos, node };
-      return false;
-    }
-    return true;
-  });
-  return result;
-}
-
 /**
  * Editor 模块
  * 约束：只能操作 ProseMirror JSON；所有变更必须通过 transaction（§6.3）。
  * 本组件本身不持有"业务状态"，每次 transaction 后把最新的
  * doc.toJSON() 上抛给父组件——JSON 才是唯一真相源。
  *
- * 新增三块能力（均建立在 schema 里新增的 blockId/cellId/comment 之上）：
- *   - 左侧目录树：遍历 heading 节点生成，点击跳转
- *   - 右侧批注面板：来自 OOXML 解析 + 编辑器内新增，点击跳转并高亮锚点
- *   - highlightPlugin 驱动的"通过接口高亮段落/单元格" API（onReady 暴露）
+ * 工具栏分三组，对应 Office 的功能划分：
+ *   - Row1 结构：正文/标题1-9 选择、列表、引用、插入（链接/图片/表格/插件）、批注、面板开关
+ *   - Row2 字体与段落：字体/字号/颜色/高亮/加粗斜体下划线删除线、对齐、缩进、行距
+ *   - Row3（条件显示）：光标进入表格时出现的表格上下文工具栏
  */
 export function EditorPane(props: EditorPaneProps) {
   let hostEl: HTMLDivElement | undefined;
@@ -189,25 +187,74 @@ export function EditorPane(props: EditorPaneProps) {
     return view ? markActive(view.state, markType) : false;
   };
 
-  const isBlockActive = (nodeType: any, attrs?: Record<string, any>) => {
-    version();
-    return view ? blockActive(view.state, nodeType, attrs) : false;
-  };
-
   const outlineItems = (): OutlineItem[] => {
     version();
-    if (!view) return [];
-    const items: OutlineItem[] = [];
-    view.state.doc.descendants((node) => {
-      if (node.type.name === "heading") {
-        items.push({ blockId: node.attrs.blockId ?? "", level: node.attrs.level, text: node.textContent });
-      }
-      return true;
-    });
-    return items;
+    return view ? computeOutline(view.state.doc) : [];
   };
 
+  // ---- 段落/字体控件的"当前值"读取（驱动下拉框/颜色选择器回显）----
+
+  const currentAlign = () => {
+    version();
+    return view ? currentBlockAttr(view.state, "align") || "left" : "left";
+  };
+
+  const currentHeadingValue = () => {
+    version();
+    if (!view) return "paragraph";
+    const node = view.state.selection.$from.parent;
+    return node.type.name === "heading" ? `h${node.attrs.level}` : "paragraph";
+  };
+
+  const currentFontFamily = () => {
+    version();
+    return view ? currentDocxStyleAttr(view.state, docSchema.marks.docxStyle, "fontFamily") ?? "" : "";
+  };
+
+  const currentFontSizePt = () => {
+    version();
+    if (!view) return "";
+    const half = currentDocxStyleAttr(view.state, docSchema.marks.docxStyle, "sizeHalfPt");
+    return half ? String(Number(half) / 2) : "";
+  };
+
+  const currentColor = () => {
+    version();
+    return view ? currentDocxStyleAttr(view.state, docSchema.marks.docxStyle, "color") || "#1c2321" : "#1c2321";
+  };
+
+  const currentHighlight = () => {
+    version();
+    return view ? currentDocxStyleAttr(view.state, docSchema.marks.docxStyle, "highlight") ?? "" : "";
+  };
+
+  const currentLineSpacing = () => {
+    version();
+    return view ? String(currentBlockAttr(view.state, "lineSpacing") ?? "") : "";
+  };
+
+  const inTable = () => {
+    version();
+    return view ? isInTable(view.state) : false;
+  };
+
+  // ---- 命令绑定 ----
+
   const toolbar = buildToolbar(docSchema);
+  const tableToolbar = buildTableToolbar();
+
+  const onHeadingSelect = (value: string) => {
+    if (value === "paragraph") runCommand(toolbar.paragraph);
+    else runCommand(toolbar.heading(Number(value.slice(1))));
+  };
+  const onFontFamilyChange = (value: string) => runCommand(setDocxStyle(docSchema, { fontFamily: value || null }));
+  const onFontSizeChange = (ptStr: string) => {
+    if (!ptStr) return;
+    runCommand(setDocxStyle(docSchema, { sizeHalfPt: Math.round(Number(ptStr) * 2) }));
+  };
+  const onColorChange = (hex: string) => runCommand(setDocxStyle(docSchema, { color: hex }));
+  const onHighlightChange = (value: string) => runCommand(setDocxStyle(docSchema, { highlight: value || null }));
+  const onLineSpacingChange = (value: string) => runCommand(setLineSpacing(value ? Number(value) : null));
 
   interface BtnDef {
     id: string;
@@ -231,14 +278,6 @@ export function EditorPane(props: EditorPaneProps) {
     </button>
   );
 
-  const headingButtons: BtnDef[] = [1, 2, 3].map((level) => ({
-    id: `h${level}`,
-    label: `H${level}`,
-    onClick: () => runCommand(toolbar.heading(level)),
-    active: () => isBlockActive(docSchema.nodes.heading, { level }),
-    title: `标题 ${level}`,
-  }));
-
   const pluginButtons: BtnDef[] = pluginRegistry.all().flatMap((p) =>
     (p.toolbar ? p.toolbar(docSchema) : []).map((item) => ({
       id: item.id,
@@ -253,13 +292,17 @@ export function EditorPane(props: EditorPaneProps) {
 
   return (
     <div class="editor-shell">
-      <div class="toolbar" role="toolbar" aria-label="格式工具栏">
-        <Btn id="bold" label="B" onClick={() => runCommand(toolbar.bold)} active={() => isMarkActive(docSchema.marks.strong)} title="加粗" />
-        <Btn id="italic" label="I" onClick={() => runCommand(toolbar.italic)} active={() => isMarkActive(docSchema.marks.em)} title="斜体" />
-        <Btn id="code" label="</>" onClick={() => runCommand(toolbar.code)} active={() => isMarkActive(docSchema.marks.code)} title="行内代码" />
-        <span class="toolbar-divider" />
-        <Btn id="p" label="正文" onClick={() => runCommand(toolbar.paragraph)} active={() => isBlockActive(docSchema.nodes.paragraph)} />
-        <For each={headingButtons}>{(def) => <Btn {...def} />}</For>
+      {/* Row 1：结构 —— 标题级别 / 列表 / 插入 / 批注 / 面板开关 */}
+      <div class="toolbar" role="toolbar" aria-label="结构工具栏">
+        <select
+          class="toolbar-select toolbar-select-heading"
+          value={currentHeadingValue()}
+          onChange={(e) => onHeadingSelect(e.currentTarget.value)}
+          title="段落样式"
+        >
+          <option value="paragraph">正文</option>
+          <For each={HEADING_LEVELS}>{(level) => <option value={`h${level}`}>标题 {level}</option>}</For>
+        </select>
         <span class="toolbar-divider" />
         <Btn id="ul" label="• 列表" onClick={() => runCommand(toolbar.bulletList)} />
         <Btn id="ol" label="1. 列表" onClick={() => runCommand(toolbar.orderedList)} />
@@ -275,6 +318,86 @@ export function EditorPane(props: EditorPaneProps) {
         <Btn id="toggle-outline" label="🗂 目录" onClick={() => setShowOutline((v) => !v)} active={() => showOutline()} title="显示/隐藏文档目录" />
         <Btn id="toggle-comments" label="💬 批注列表" onClick={() => setShowComments((v) => !v)} active={() => showComments()} title="显示/隐藏批注面板" />
       </div>
+
+      {/* Row 2：字体 & 段落格式 —— 尽量贴近 Office「开始」选项卡 */}
+      <div class="toolbar toolbar-format" role="toolbar" aria-label="字体与段落工具栏">
+        <select class="toolbar-select" value={currentFontFamily()} onChange={(e) => onFontFamilyChange(e.currentTarget.value)} title="字体">
+          <For each={FONT_FAMILIES}>{(f) => <option value={f.value}>{f.label}</option>}</For>
+        </select>
+        <select
+          class="toolbar-select toolbar-select-narrow"
+          value={currentFontSizePt()}
+          onChange={(e) => onFontSizeChange(e.currentTarget.value)}
+          title="字号"
+        >
+          <option value="">字号</option>
+          <For each={FONT_SIZES_PT}>{(pt) => <option value={pt}>{pt}</option>}</For>
+        </select>
+        <Btn id="bold" label="B" onClick={() => runCommand(toolbar.bold)} active={() => isMarkActive(docSchema.marks.strong)} title="加粗" />
+        <Btn id="italic" label="I" onClick={() => runCommand(toolbar.italic)} active={() => isMarkActive(docSchema.marks.em)} title="斜体" />
+        <Btn id="underline" label="U" onClick={() => runCommand(toolbar.underline)} active={() => isMarkActive(docSchema.marks.underline)} title="下划线" />
+        <Btn id="strike" label="S" onClick={() => runCommand(toolbar.strike)} active={() => isMarkActive(docSchema.marks.strike)} title="删除线" />
+        <Btn id="code" label="</>" onClick={() => runCommand(toolbar.code)} active={() => isMarkActive(docSchema.marks.code)} title="行内代码" />
+        <label class="toolbar-color" title="文字颜色">
+          A
+          <input type="color" value={currentColor()} onInput={(e) => onColorChange(e.currentTarget.value)} />
+        </label>
+        <select
+          class="toolbar-select toolbar-select-narrow"
+          value={currentHighlight()}
+          onChange={(e) => onHighlightChange(e.currentTarget.value)}
+          title="高亮"
+        >
+          <For each={HIGHLIGHT_OPTIONS}>{(h) => <option value={h.value}>{h.label}</option>}</For>
+        </select>
+        <span class="toolbar-divider" />
+        <Btn id="align-left" label="≡L" onClick={() => runCommand(toolbar.alignLeft)} active={() => currentAlign() === "left"} title="左对齐" />
+        <Btn id="align-center" label="≡C" onClick={() => runCommand(toolbar.alignCenter)} active={() => currentAlign() === "center"} title="居中" />
+        <Btn id="align-right" label="≡R" onClick={() => runCommand(toolbar.alignRight)} active={() => currentAlign() === "right"} title="右对齐" />
+        <Btn
+          id="align-justify"
+          label="≡J"
+          onClick={() => runCommand(toolbar.alignJustify)}
+          active={() => currentAlign() === "justify"}
+          title="两端对齐"
+        />
+        <span class="toolbar-divider" />
+        <Btn id="indent-less" label="⇤缩进" onClick={() => runCommand(toolbar.indentLess)} title="减少缩进" />
+        <Btn id="indent-more" label="缩进⇥" onClick={() => runCommand(toolbar.indentMore)} title="增加缩进" />
+        <select
+          class="toolbar-select toolbar-select-narrow"
+          value={currentLineSpacing()}
+          onChange={(e) => onLineSpacingChange(e.currentTarget.value)}
+          title="行距"
+        >
+          <For each={LINE_SPACING_OPTIONS}>{(l) => <option value={l.value}>{l.label}</option>}</For>
+        </select>
+      </div>
+
+      {/* Row 3（条件显示）：光标位于表格内时出现，Office 式表格上下文工具栏 */}
+      <Show when={inTable()}>
+        <div class="toolbar toolbar-table" role="toolbar" aria-label="表格工具栏">
+          <span class="toolbar-label">表格：</span>
+          <Btn id="row-before" label="↑插入行" onClick={() => runCommand(tableToolbar.addRowBefore)} />
+          <Btn id="row-after" label="↓插入行" onClick={() => runCommand(tableToolbar.addRowAfter)} />
+          <Btn id="col-before" label="←插入列" onClick={() => runCommand(tableToolbar.addColumnBefore)} />
+          <Btn id="col-after" label="→插入列" onClick={() => runCommand(tableToolbar.addColumnAfter)} />
+          <span class="toolbar-divider" />
+          <Btn id="del-row" label="删除行" onClick={() => runCommand(tableToolbar.deleteRow)} />
+          <Btn id="del-col" label="删除列" onClick={() => runCommand(tableToolbar.deleteColumn)} />
+          <Btn id="del-table" label="删除表格" onClick={() => runCommand(tableToolbar.deleteTable)} />
+          <span class="toolbar-divider" />
+          <Btn id="merge" label="合并单元格" onClick={() => runCommand(tableToolbar.mergeCells)} />
+          <Btn id="split" label="拆分单元格" onClick={() => runCommand(tableToolbar.splitCell)} />
+          <Btn id="header-row" label="表头行" onClick={() => runCommand(tableToolbar.toggleHeaderRow)} />
+          <Btn id="header-col" label="表头列" onClick={() => runCommand(tableToolbar.toggleHeaderColumn)} />
+          <label class="toolbar-color" title="单元格底色">
+            底色
+            <input type="color" value="#ffffff" onInput={(e) => runCommand(tableToolbar.setCellBackground(e.currentTarget.value))} />
+          </label>
+        </div>
+      </Show>
+
       <div class="editor-body">
         <Show when={showOutline()}>
           <OutlineTree items={outlineItems()} onJump={scrollToBlock} />

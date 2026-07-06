@@ -63,6 +63,26 @@ function normalizeAlign(val: string | null): string | null {
   return null;
 }
 
+/** w:ind 的 w:left（缇，1/20 pt）→ 我们的缩进级别（每级 720 缇 ≈ Word "增加缩进" 一次）*/
+function parseIndentLevel(pPr: Element | null): number {
+  const indEl = child(pPr, "ind");
+  const leftTwips = Number(indEl?.getAttribute("w:left") ?? indEl?.getAttribute("w:start") ?? "0");
+  if (!leftTwips || Number.isNaN(leftTwips)) return 0;
+  return Math.max(0, Math.min(8, Math.round(leftTwips / 720)));
+}
+
+/** w:spacing 的 w:line（仅 lineRule=auto 时是"倍数×240"）→ 行距倍数，如 1 / 1.5 / 2 */
+function parseLineSpacing(pPr: Element | null): number | null {
+  const spacingEl = child(pPr, "spacing");
+  if (!spacingEl) return null;
+  const lineRule = spacingEl.getAttribute("w:lineRule");
+  const line = Number(spacingEl.getAttribute("w:line") ?? "0");
+  if (!line || Number.isNaN(line)) return null;
+  if (lineRule && lineRule !== "auto") return null; // exact/atLeast 是绝对尺寸，暂不处理
+  const multiplier = Math.round((line / 240) * 100) / 100;
+  return multiplier > 0 ? multiplier : null;
+}
+
 async function readZipText(zip: JSZip, path: string): Promise<string | null> {
   const entry = zip.file(path);
   if (!entry) return null;
@@ -153,7 +173,7 @@ function parseStylesXml(doc: Document): Map<string, StyleInfo> {
     raw.set(id, {
       name,
       basedOn,
-      headingLevel: headingMatch ? Math.min(6, Number(headingMatch[1])) : id === "Title" ? 1 : null,
+      headingLevel: headingMatch ? Math.min(9, Number(headingMatch[1])) : id === "Title" ? 1 : null,
       rPr: extractRunProps(child(styleEl, "rPr")),
       align,
     });
@@ -471,14 +491,16 @@ function parseParagraphEl(pEl: Element, ctx: ParseCtx): FlatBlock {
 
   const directAlign = normalizeAlign(wAttr(child(pPr, "jc"), "val"));
   const align = directAlign ?? styleInfo?.align ?? null;
+  const indent = parseIndentLevel(pPr);
+  const lineSpacing = parseLineSpacing(pPr);
 
   const inline = parseInlineContent(pEl, ctx, styleInfo?.rPr ?? {});
   const headingLevel = styleInfo?.headingLevel ?? null;
   const blockId = ctx.nextBlockId();
 
   const node = headingLevel
-    ? { type: "heading", attrs: { level: headingLevel, blockId, styleName: styleInfo?.name ?? null, align }, content: inline }
-    : { type: "paragraph", attrs: { blockId, styleName: styleInfo?.name ?? null, align }, content: inline };
+    ? { type: "heading", attrs: { level: headingLevel, blockId, styleName: styleInfo?.name ?? null, align, indent, lineSpacing }, content: inline }
+    : { type: "paragraph", attrs: { blockId, styleName: styleInfo?.name ?? null, align, indent, lineSpacing }, content: inline };
 
   if (numId != null && ilvl != null && !headingLevel) {
     const ordered = ctx.numbering.get(numId)?.get(ilvl) ?? false;

@@ -33,6 +33,7 @@ import {
   BorderStyle,
   WidthType,
   ShadingType,
+  LineRuleType,
   CommentRangeStart,
   CommentRangeEnd,
   CommentReference,
@@ -52,6 +53,26 @@ const HEADING_MAP: Record<number, (typeof HeadingLevel)[keyof typeof HeadingLeve
   5: HeadingLevel.HEADING_5,
   6: HeadingLevel.HEADING_6,
 };
+
+// docx.js 的 HeadingLevel 常量只到 6（Word 默认模板虽然存在 Heading7-9 样式，
+// 但直接引用未在生成的 styles.xml 里定义的样式 id 有被 Word 忽略的风险）。
+// 因此 7-9 级标题改为"结构不依赖具名样式"的直接加粗+字号格式作为兜底外观，
+// 语义层面的标题层级仍然完整保留在我们自己的 JSON 模型（level 属性）里。
+const HEADING_FALLBACK_RUN: Record<number, { bold: boolean; italics: boolean; sizeHalfPt: number }> = {
+  7: { bold: true, italics: false, sizeHalfPt: 26 },
+  8: { bold: true, italics: true, sizeHalfPt: 24 },
+  9: { bold: true, italics: true, sizeHalfPt: 22 },
+};
+
+function mapIndent(indentLevel: number | null | undefined) {
+  if (!indentLevel) return undefined;
+  return { left: Number(indentLevel) * 720 };
+}
+
+function mapSpacing(lineSpacing: number | null | undefined) {
+  if (!lineSpacing) return undefined;
+  return { line: Math.round(Number(lineSpacing) * 240), lineRule: LineRuleType.AUTO };
+}
 
 const ALIGN_MAP: Record<string, (typeof AlignmentType)[keyof typeof AlignmentType]> = {
   left: AlignmentType.LEFT,
@@ -107,15 +128,20 @@ interface RunWithComments {
   commentIds: number[];
 }
 
-/** 行内内容 → 带批注 ID 标记的 docx.js ParagraphChild 列表（内部中间态）*/
-async function buildInlineItems(content: any[]): Promise<RunWithComments[]> {
+/** 行内内容 → 带批注 ID 标记的 docx.js ParagraphChild 列表（内部中间态）
+ *  fallbackRun：当某个文字节点自身没有显式加粗/字号时使用的默认外观
+ *  （用于 7-9 级标题——它们不依赖 Word 具名样式，需要一个直接格式兜底）*/
+async function buildInlineItems(
+  content: any[],
+  fallbackRun?: { bold: boolean; italics: boolean; sizeHalfPt: number }
+): Promise<RunWithComments[]> {
   const items: RunWithComments[] = [];
 
   for (const node of content ?? []) {
     if (node.type === "text") {
       const marks: any[] = node.marks ?? [];
-      const bold = marks.some((m) => m.type === "strong");
-      const italics = marks.some((m) => m.type === "em");
+      const bold = marks.some((m) => m.type === "strong") || !!fallbackRun?.bold;
+      const italics = marks.some((m) => m.type === "em") || !!fallbackRun?.italics;
       const isCode = marks.some((m) => m.type === "code");
       const underline = marks.some((m) => m.type === "underline");
       const strike = marks.some((m) => m.type === "strike");
@@ -130,7 +156,7 @@ async function buildInlineItems(content: any[]): Promise<RunWithComments[]> {
         strike,
         underline: underline ? {} : undefined,
         font: isCode ? "Courier New" : styleMark?.attrs?.fontFamily ?? undefined,
-        size: styleMark?.attrs?.sizeHalfPt ?? undefined,
+        size: styleMark?.attrs?.sizeHalfPt ?? fallbackRun?.sizeHalfPt ?? undefined,
         color: styleMark?.attrs?.color ? String(styleMark.attrs.color).replace("#", "") : undefined,
         shading: isCode
           ? { type: ShadingType.CLEAR, fill: "F3F3F3", color: "auto" }
@@ -196,8 +222,11 @@ function injectCommentRanges(items: RunWithComments[]): ParagraphChild[] {
   return out;
 }
 
-async function finalizeChildren(content: any[]): Promise<ParagraphChild[]> {
-  return injectCommentRanges(await buildInlineItems(content));
+async function finalizeChildren(
+  content: any[],
+  fallbackRun?: { bold: boolean; italics: boolean; sizeHalfPt: number }
+): Promise<ParagraphChild[]> {
+  return injectCommentRanges(await buildInlineItems(content, fallbackRun));
 }
 
 async function listToDocx(listNode: any, depth: number, ordered: boolean, overrides: Record<string, any>): Promise<Paragraph[]> {
@@ -210,6 +239,8 @@ async function listToDocx(listNode: any, depth: number, ordered: boolean, overri
           new Paragraph({
             ...overrides,
             alignment: mapAlign(child.attrs?.align),
+            indent: mapIndent(child.attrs?.indent),
+            spacing: mapSpacing(child.attrs?.lineSpacing),
             ...(ordered
               ? { numbering: { reference: ORDERED_LIST_REF, level: Math.min(depth, 2) } }
               : { bullet: { level: Math.min(depth, 8) } }),
@@ -248,6 +279,7 @@ async function tableToDocx(node: any): Promise<Table> {
           children: cellBlocks.length ? cellBlocks : [new Paragraph({})],
           shading: background ? { type: ShadingType.CLEAR, fill: background, color: "auto" } : undefined,
           columnSpan: cellNode.attrs?.colspan ?? undefined,
+          rowSpan: cellNode.attrs?.rowspan && cellNode.attrs.rowspan > 1 ? cellNode.attrs.rowspan : undefined,
         })
       );
     }
@@ -275,19 +307,26 @@ async function blockNodeToDocx(node: any, overrides: Record<string, any> = {}): 
         new Paragraph({
           ...overrides,
           alignment: mapAlign(node.attrs?.align),
+          indent: mapIndent(node.attrs?.indent),
+          spacing: mapSpacing(node.attrs?.lineSpacing),
           children: await finalizeChildren(node.content ?? []),
         }),
       ];
 
-    case "heading":
+    case "heading": {
+      const level = node.attrs?.level ?? 1;
+      const fallback = HEADING_FALLBACK_RUN[level];
       return [
         new Paragraph({
           ...overrides,
-          heading: HEADING_MAP[node.attrs?.level ?? 1] ?? HeadingLevel.HEADING_1,
+          heading: fallback ? undefined : HEADING_MAP[level] ?? HeadingLevel.HEADING_1,
           alignment: mapAlign(node.attrs?.align),
-          children: await finalizeChildren(node.content ?? []),
+          indent: mapIndent(node.attrs?.indent),
+          spacing: mapSpacing(node.attrs?.lineSpacing),
+          children: await finalizeChildren(node.content ?? [], fallback),
         }),
       ];
+    }
 
     case "blockquote": {
       const out: Paragraph[] = [];

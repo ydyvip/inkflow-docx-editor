@@ -1,7 +1,7 @@
 import { chromium } from "playwright";
 import { readFileSync, writeFileSync } from "fs";
 
-const BASE = "http://localhost:4310";
+const BASE = process.env.BASE_URL || "http://localhost:4300";
 const consoleErrors = [];
 const pageErrors = [];
 
@@ -38,12 +38,12 @@ try {
   await page.locator(".ProseMirror").click();
   await page.keyboard.press("Control+End");
   await page.keyboard.press("Enter");
-  await page.getByTitle("标题 2").click();
+  await page.locator(".toolbar-select-heading").selectOption("h2");
   await page.keyboard.type("插入的新章节");
   await page.keyboard.press("Enter");
-  await page.getByTitle("正文").click();
+  await page.locator(".toolbar-select-heading").selectOption("paragraph");
   await page.keyboard.type("这是通过编辑器新增的段落，用来验证 transaction 流程。");
-  log("typed new heading + paragraph via toolbar + keyboard");
+  log("typed new heading + paragraph via toolbar select + keyboard");
 
   // bold toggle test
   await page.keyboard.press("Enter");

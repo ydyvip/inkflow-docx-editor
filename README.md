@@ -15,11 +15,17 @@ npm run preview     # 预览生产构建
 
 打开页面后：
 1. 拖拽 / 选择一个 `.docx` 文件上传，或点击"从空白文档开始"
-2. 左侧是**文档目录树**（根据标题自动生成，点击跳转）
-3. 中间是编辑器：工具栏支持标题 / 加粗 / 列表 / 表格 / 链接 / 图片 / 提示块 / **批注**
+2. 左侧是**文档目录树**（H1-H9 全部支持，自动生成，点击跳转+高亮）
+3. 中间是编辑器，工具栏分三组，尽量贴近 Office「开始」选项卡：
+   - **结构行**：正文/标题 1-9 下拉、列表、引用、链接/图片/表格/提示块、批注、面板开关
+   - **字体与段落行**：字体、字号、文字颜色、高亮底色、加粗/斜体/下划线/删除线/行内代码、
+     左中右两端对齐、增减缩进、行距
+   - **表格上下文行**（光标进入表格时才出现）：插入/删除行列、合并/拆分单元格、
+     表头行/列切换、单元格底色
 4. 右侧是**批注面板**（DOCX 原有批注 + 编辑器内新增的批注，点击跳转并高亮）
-5. 切换到"预览"标签页查看只读渲染——颜色、字体、字号、对齐方式均来自解析出的真实 DOCX 样式
-6. 点击"导出 DOCX"下载编辑结果（含批注、颜色、字号、对齐方式的完整回填）
+5. 切换到"预览"标签页——同样带**目录树**，只读渲染；颜色、字体、字号、对齐方式均来自
+   解析出的真实 DOCX 样式，与编辑器完全一致
+6. 点击"导出 DOCX"下载编辑结果（颜色/字号/对齐/缩进/行距/批注/表格结构完整回填）
 7. 点击"✨ 生成大纲"体验 AI 扩展接口（`applyAIPatch`）
 
 ## ⚠️ 与最初方案的一个重要差异：解析器不再基于 mammoth.js
@@ -49,15 +55,17 @@ src/
  │    ├── parseDocx.ts                    — 编排：File → Worker → JSON + 批注
  │    └── ooxml.ts                        — 核心：直接解析 DOCX 原始 XML（见上）
  ├── editor/
- │    ├── EditorPane.tsx                  — 编辑器 + 目录树 + 批注面板 + 高亮 API
+ │    ├── EditorPane.tsx                  — 编辑器 + 目录树 + 批注面板 + 高亮 API + 三行工具栏
  │    ├── highlightPlugin.ts              — ProseMirror Decoration 高亮插件
+ │    ├── ensureIdsPlugin.ts              — 编辑过程中新节点自动补 blockId/cellId
+ │    ├── formatOptions.ts                — 字体/字号/高亮/行距下拉选项
  │    ├── commands.ts / pluginsSetup.ts / tableUtils.ts
  │    └── editor.css
- ├── outline/    OutlineTree.tsx          — 文档目录树组件
+ ├── outline/    OutlineTree.tsx / computeOutline.ts — 文档目录树组件 + 共享的遍历/定位逻辑
  ├── comments/   CommentsPanel.tsx        — 批注面板组件
- ├── preview/    PreviewPane.tsx          — 只读渲染（复用同一份 schema，样式天然一致）
+ ├── preview/    PreviewPane.tsx          — 只读渲染 + 自己的目录树（复用同一份 schema，样式天然一致）
  ├── export/     exportDocx.ts            — JSON(+批注) → docx.js → DOCX Blob
- ├── schema/     index.ts                 — 唯一 Schema：blockId/cellId/styleName/align + docxStyle/comment marks
+ ├── schema/     index.ts                 — 唯一 Schema：blockId/cellId/styleName/align/indent/lineSpacing + docxStyle/underline/strike/comment marks
  ├── plugins/    registry.ts / calloutPlugin.ts — 插件系统（Node/Mark/InputRule/Keymap）
  ├── worker/     parse.worker.ts          — 大文件 Worker 化解析（zip 解包 + XML 遍历都在 worker 里）
  └── utils/      applyAIPatch.ts          — AI 扩展接口预留
@@ -111,6 +119,41 @@ window.inkflowEditor.clearHighlights();
 导出时会把批注（含新增的）重新写回真实的 `w:commentRangeStart/End` +
 `w:commentReference` + `word/comments.xml`（用 `docx.js` 的 `Comments` API）。
 
+## Office 级编辑能力
+
+### H1-H9 全部标题层级
+`heading` 节点的 `level` 属性本来就没有上限校验（`prosemirror-schema-basic` 只是
+"H"+level 拼标签），真正的限制在于 HTML 没有 `<h7>`-`<h9>` 标签。方案：
+仍然渲染成 `<h7>`/`<h8>`/`<h9>`（浏览器允许任意标签名），配合 `editor.css` 里的
+`display:block` 规则强制块级显示。导出时 1-6 级用 `docx.js` 的具名 `HeadingLevel`
+样式（`Heading1`...`Heading6`），7-9 级由于 `docx.js` 没有对应常量、且直接引用
+未在生成的 `styles.xml` 里定义的样式 ID 有被 Word 忽略的风险，改为"结构不依赖具名
+样式"的直接加粗+递减字号格式兜底——标题层级语义仍完整保存在我们自己的 JSON 模型里
+（`level` 属性），只是导出时的视觉呈现方式不同。
+
+### 字体 / 段落格式完全开放
+`docxStyle` mark（颜色/字体/字号/高亮）不再只是解析时只读展示，工具栏可以直接
+写入：选中文字后改字体/字号/颜色/高亮，会对选区内**逐个文字节点**合并新属性
+（保留该节点原有的其它样式，不会把混合格式的选区强行拉平成一份 attrs——这正是
+Word「选区内格式不一致，只改一个属性」的行为）；光标无选区时写入 `storedMarks`，
+影响接下来要输入的文字。对齐方式、缩进（`increase/decreaseIndent`，在列表项里时
+优先走 `sinkListItem`/`liftListItem` 缩进列表层级，否则调整段落 `indent` 属性）、
+行距都是直接修改 `paragraph`/`heading` 节点的 attrs（`setNodeMarkup`，不改变节点
+大小，可以在一个事务里安全地连续处理选区覆盖到的多个块）。
+
+### 表格编辑完全开放
+光标进入表格时，工具栏下方会出现表格上下文行（`isInTable(state)` 驱动的响应式
+显示），直接复用 `prosemirror-tables` 的完整命令集：`addRowBefore/After`、
+`addColumnBefore/After`、`deleteRow/Column/Table`、`mergeCells`、`splitCell`、
+`toggleHeaderRow/Column`、`setCellAttr("background", …)`。单元格合并产生的
+`rowspan`/`colspan` 会在导出时回填为 docx.js 的 `rowSpan`/`columnSpan`。
+
+### 编辑过程中新节点的 ID 保障
+`blockId`/`cellId` 在解析阶段由 `ooxml.ts` 统一分配，但编辑时新产生的节点（回车
+新建的段落、表格插入的新行/列……）默认没有这两个属性。`src/editor/ensureIdsPlugin.ts`
+是一个 `appendTransaction` 插件，每次文档变化后自动给缺失 ID 的节点补上，保证目录树
+和"通过接口高亮"在自由编辑之后依然可靠，不仅仅在刚解析完的那一刻有效。
+
 ## 技术选型
 
 | 能力 | 选型 |
@@ -146,7 +189,7 @@ window.inkflowEditor.clearHighlights();
 
 ## 质量验证
 
-`scripts/` 目录包含两套端到端冒烟测试（Playwright + Chromium）：
+`scripts/` 目录包含三套端到端冒烟测试（Playwright + Chromium）：
 
 ```bash
 npm run make-sample          # 生成基础测试用 docx（标题/正文/列表）
@@ -154,18 +197,33 @@ npm run make-rich-sample     # 生成含"彩色文字/居中/批注/表格底色
 npx playwright install chromium
 npm run build && npm run preview -- --port 4300 &
 npm run e2e                  # 基础闭环：上传→编辑→表格→插件节点→AI大纲→预览→导出
-npm run e2e:features         # 新增能力：目录树跳转、预览样式还原、高亮接口、批注显示与新增、导出回填
+npm run e2e:features         # 解析相关能力：目录树跳转、预览样式还原、高亮接口、批注显示与新增、导出回填
+npm run e2e:office           # Office 级编辑：H1-H9、字体/颜色/高亮/下划线/删除线、对齐/缩进/行距、
+                              # 表格插入/删除行列/合并/拆分/表头/底色，全部校验到导出后的原始 XML
 ```
 
-两套测试均已通过，并额外用 Python 校验过导出文件的原始 XML（`word/comments.xml`
-真实包含批注、`word/document.xml` 真实包含 `w:color`/`w:sz`/`commentRangeStart`/
-`w:jc="center"`），确认不是"看起来对但导出是空壳"。
+三套测试均已通过，并额外用 Python 校验过导出文件的原始 XML（`word/comments.xml`
+真实包含批注、`word/document.xml` 真实包含 `w:color`/`w:sz`/`w:u`/`w:strike`/
+`w:jc`/`w:ind`/`w:spacing`/`w:gridSpan`/`commentRangeStart` 等），确认不是
+"看起来对但导出是空壳"。
+
+调试这套测试时踩过一个值得记录的坑：Playwright 的合成键盘/鼠标事件如果不加任何
+间隔连续触发，可能跑在 ProseMirror 把浏览器原生选区同步回自身模型之前，导致
+"点击 A 位置、按 Enter"这类操作实际作用在了旧的选区位置上。真实用户的手速远
+达不到这个量级，所以这只是自动化测试要考虑的时序问题，不是应用本身的 bug——
+但排查过程本身值得记录：加一点点等待（`e2e:office` 里的 `moveCursorToDocEnd`
+辅助函数）就能稳定复现正确结果。
 
 ## 已知限制
 
 - **还原误差**：页眉页脚、分栏、修订标记的精确渲染、脚注/尾注内容、复杂编号重启逻辑不处理，
   遵循"结构优先、样式次之、还原度最后"原则（§2.3）。
-- **表格**：支持 `gridSpan`（合并列）与单元格底色，不支持 `vMerge`（合并行）。
+- **表格**：支持 `gridSpan`（合并列）、`rowSpan`（合并行，来自 `prosemirror-tables` 编辑时
+  产生的 rowspan 属性）与单元格底色；不支持单元格内嵌套的复杂垂直合并继承样式。
+- **H7-H9 标题**：由于 docx.js 没有对应的具名样式常量，导出时使用直接加粗+字号格式兜底，
+  而不是引用 Word 的 `Heading7`-`Heading9` 样式——如果原始 DOCX 本身就带这几级标题的具名样式，
+  解析时已经把该样式的颜色/字号还原到了 `docxStyle` mark 上，因此往返导出的视觉效果基本一致，
+  只是不通过"具名样式引用"这条路径。
 - **批注范围**：假定批注锚点不跨段落（真实 Word 文档里跨段落批注较少见）。
 - **修订标记**：`w:ins` 内容展开为正常文本，`w:del` 内容直接丢弃，不保留标记状态。
 - **协同编辑**：未实现，是预留而非已完成的能力（`buildEditorPlugins` 预留了

@@ -1,7 +1,7 @@
 import { chromium } from "playwright";
 import { readFileSync } from "fs";
 
-const BASE = process.env.BASE_URL || "http://localhost:4303";
+const BASE = process.env.BASE_URL || "http://localhost:4300";
 const consoleErrors = [];
 const pageErrors = [];
 
