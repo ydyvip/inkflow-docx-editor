@@ -10,7 +10,7 @@
  * 补一个，保证"通过接口高亮段落/单元格"和目录树在自由编辑之后
  * 依然可靠，而不仅仅在刚解析完的那一刻有效。
  */
-import { Plugin } from "prosemirror-state";
+import { Plugin } from 'prosemirror-state';
 
 function randomId(prefix: string): string {
   return `${prefix}${Math.random().toString(36).slice(2, 9)}`;
@@ -23,11 +23,24 @@ export function ensureIdsPlugin(): Plugin {
       let tr = newState.tr;
       let changed = false;
       newState.doc.descendants((node, pos) => {
-        if ((node.type.name === "paragraph" || node.type.name === "heading") && !node.attrs.blockId) {
-          tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, blockId: randomId("b") });
+        if (
+          (node.type.name === 'paragraph' || node.type.name === 'heading') &&
+          !node.attrs.blockId
+        ) {
+          tr = tr.setNodeMarkup(pos, undefined, {
+            ...node.attrs,
+            blockId: randomId('b'),
+          });
           changed = true;
-        } else if ((node.type.name === "table_cell" || node.type.name === "table_header") && !node.attrs.cellId) {
-          tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, cellId: randomId("c") });
+        } else if (
+          (node.type.name === 'table_cell' ||
+            node.type.name === 'table_header') &&
+          !node.attrs.cellId
+        ) {
+          tr = tr.setNodeMarkup(pos, undefined, {
+            ...node.attrs,
+            cellId: randomId('c'),
+          });
           changed = true;
         }
         return true;

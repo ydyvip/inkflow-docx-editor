@@ -1,17 +1,17 @@
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 :root {
   /* ---- Design tokens：墨 & 纸（ink & paper）---- */
-  --canvas: #e8ebe7;       /* 冷调灰绿背景，区别于常见暖米色 */
-  --paper: #fffffe;        /* 文档"纸张" */
-  --surface-1: #f4f5f2;    /* 工具栏等次级表面 */
+  --canvas: #e8ebe7; /* 冷调灰绿背景，区别于常见暖米色 */
+  --paper: #fffffe; /* 文档"纸张" */
+  --surface-1: #f4f5f2; /* 工具栏等次级表面 */
   --surface-2: #eceeea;
 
-  --ink-1: #1c2321;        /* 主文字 */
-  --ink-2: #45514c;        /* 次文字 */
-  --ink-3: #7c8781;        /* 弱化/说明文字 */
+  --ink-1: #1c2321; /* 主文字 */
+  --ink-2: #45514c; /* 次文字 */
+  --ink-3: #7c8781; /* 弱化/说明文字 */
 
-  --accent: #2f6f6f;       /* 墨绿蓝主色 */
+  --accent: #2f6f6f; /* 墨绿蓝主色 */
   --accent-ink: #1f5c5c;
   --accent-soft: #9cc7c3;
   --accent-wash: #e4f0ef;
@@ -21,9 +21,9 @@
   --line: #e2e4de;
   --line-strong: #c7cbc2;
 
-  --font-display: "Fraunces", "Songti SC", serif;
-  --font-body: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  --font-display: 'Fraunces', 'Songti SC', serif;
+  --font-body: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
 
   color-scheme: light;
 }

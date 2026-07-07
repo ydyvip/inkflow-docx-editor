@@ -60,7 +60,9 @@
   height: 6px;
   border-radius: 50%;
   background: var(--line-strong);
-  transition: background 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .pipeline-step.is-done {
@@ -84,8 +86,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 3px var(--accent-wash); }
-  50% { box-shadow: 0 0 0 7px var(--accent-wash); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px var(--accent-wash);
+  }
+  50% {
+    box-shadow: 0 0 0 7px var(--accent-wash);
+  }
 }
 
 .pipeline-line {
@@ -147,7 +154,10 @@
   padding: 8px 14px;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .ai-btn:hover:not(:disabled),

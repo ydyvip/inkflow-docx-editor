@@ -1,12 +1,13 @@
 {
-  "name": "inkflow-docx-editor",
+  "name": "docx-editor",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "format": "prettier --write .",
     "preview": "vite preview",
     "make-sample": "node scripts/make-sample.mjs",
     "make-rich-sample": "node scripts/make-rich-sample.mjs",
@@ -39,6 +40,7 @@
     "@types/node": "^24.13.2",
     "oxlint": "^1.71.0",
     "playwright": "^1.61.1",
+    "prettier": "^3.9.4",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
     "vite-plugin-solid": "^2.11.12"

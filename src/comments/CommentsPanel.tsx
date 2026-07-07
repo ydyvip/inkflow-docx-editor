@@ -1,6 +1,6 @@
-import { For, Show } from "solid-js";
-import "../outline/outline.css";
-import "./comments.css";
+import { For, Show } from 'solid-js';
+import '../outline/outline.css';
+import './comments.css';
 
 export interface CommentItem {
   id: number;
@@ -15,10 +15,14 @@ interface CommentsPanelProps {
 }
 
 function formatDate(d: string | null): string {
-  if (!d) return "";
+  if (!d) return '';
   const parsed = new Date(d);
   if (Number.isNaN(parsed.getTime())) return d;
-  return parsed.toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" });
+  return parsed.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
 }
 
 /**
@@ -31,7 +35,14 @@ export function CommentsPanel(props: CommentsPanelProps) {
   return (
     <div class="comments-panel">
       <div class="side-panel-title">批注（{props.comments.length}）</div>
-      <Show when={props.comments.length > 0} fallback={<div class="side-panel-empty">暂无批注，选中文字后点击工具栏"批注"可以新增</div>}>
+      <Show
+        when={props.comments.length > 0}
+        fallback={
+          <div class="side-panel-empty">
+            暂无批注，选中文字后点击工具栏"批注"可以新增
+          </div>
+        }
+      >
         <ul class="comments-list">
           <For each={props.comments}>
             {(c) => (

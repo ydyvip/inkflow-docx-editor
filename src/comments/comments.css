@@ -13,7 +13,9 @@
   border-radius: 8px;
   padding: 10px 12px;
   cursor: pointer;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .comment-item:hover {

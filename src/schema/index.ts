@@ -23,20 +23,23 @@
  *   3. prosemirror-tables        → table / table_row / table_cell / table_header
  *   4. 插件注册的自定义节点（如 callout）
  */
-import { Schema } from "prosemirror-model";
-import type { NodeSpec, MarkSpec } from "prosemirror-model";
-import { schema as basicSchema } from "prosemirror-schema-basic";
-import { addListNodes } from "prosemirror-schema-list";
-import { tableNodes } from "prosemirror-tables";
-import { pluginRegistry } from "../plugins/registry";
-import { calloutPlugin } from "../plugins/calloutPlugin";
+import { Schema } from 'prosemirror-model';
+import type { NodeSpec, MarkSpec } from 'prosemirror-model';
+import { schema as basicSchema } from 'prosemirror-schema-basic';
+import { addListNodes } from 'prosemirror-schema-list';
+import { tableNodes } from 'prosemirror-tables';
+import { pluginRegistry } from '../plugins/registry';
+import { calloutPlugin } from '../plugins/calloutPlugin';
 
 // 注册内置插件（应用启动时一次性完成，早于 schema 构建）
 pluginRegistry.register(calloutPlugin);
 
 // ---- 1. 给 paragraph / heading 扩展 blockId / styleName / align / indent / lineSpacing ----
 
-function withBlockAttrs(base: NodeSpec, extraParseDOM: NodeSpec["parseDOM"] = []): NodeSpec {
+function withBlockAttrs(
+  base: NodeSpec,
+  extraParseDOM: NodeSpec['parseDOM'] = []
+): NodeSpec {
   return {
     ...base,
     attrs: {
@@ -49,17 +52,23 @@ function withBlockAttrs(base: NodeSpec, extraParseDOM: NodeSpec["parseDOM"] = []
     },
     parseDOM: [...(base.parseDOM ?? []), ...extraParseDOM],
     toDOM(node) {
-      const baseArr = base.toDOM ? (base.toDOM(node) as unknown as any[]) : ["p", 0];
+      const baseArr = base.toDOM
+        ? (base.toDOM(node) as unknown as any[])
+        : ['p', 0];
       const tag = baseArr[0];
       const domAttrs: Record<string, string> = {};
-      if (node.attrs.blockId) domAttrs["data-block-id"] = node.attrs.blockId;
-      if (node.attrs.styleName) domAttrs["data-style-name"] = node.attrs.styleName;
+      if (node.attrs.blockId) domAttrs['data-block-id'] = node.attrs.blockId;
+      if (node.attrs.styleName)
+        domAttrs['data-style-name'] = node.attrs.styleName;
 
       const style: string[] = [];
-      if (node.attrs.align && node.attrs.align !== "left") style.push(`text-align:${node.attrs.align}`);
-      if (node.attrs.indent) style.push(`margin-left:${Number(node.attrs.indent) * 36}pt`);
-      if (node.attrs.lineSpacing) style.push(`line-height:${node.attrs.lineSpacing}`);
-      if (style.length) domAttrs.style = style.join(";");
+      if (node.attrs.align && node.attrs.align !== 'left')
+        style.push(`text-align:${node.attrs.align}`);
+      if (node.attrs.indent)
+        style.push(`margin-left:${Number(node.attrs.indent) * 36}pt`);
+      if (node.attrs.lineSpacing)
+        style.push(`line-height:${node.attrs.lineSpacing}`);
+      if (style.length) domAttrs.style = style.join(';');
 
       return [tag, domAttrs, 0];
     },
@@ -69,37 +78,47 @@ function withBlockAttrs(base: NodeSpec, extraParseDOM: NodeSpec["parseDOM"] = []
 // 标题 7-9 没有原生 HTML 标签（<h7>/<h8>/<h9> 不是标准元素），
 // 但浏览器允许渲染任意标签名；配合 editor.css 里的 display:block 规则即可正常显示为块级标题。
 const HEADING_EXTRA_PARSE_DOM = [
-  { tag: "h7", attrs: { level: 7 } },
-  { tag: "h8", attrs: { level: 8 } },
-  { tag: "h9", attrs: { level: 9 } },
+  { tag: 'h7', attrs: { level: 7 } },
+  { tag: 'h8', attrs: { level: 8 } },
+  { tag: 'h9', attrs: { level: 9 } },
 ];
 
-const paragraphSpec = withBlockAttrs(basicSchema.spec.nodes.get("paragraph")!);
-const headingSpec = withBlockAttrs(basicSchema.spec.nodes.get("heading")!, HEADING_EXTRA_PARSE_DOM);
+const paragraphSpec = withBlockAttrs(basicSchema.spec.nodes.get('paragraph')!);
+const headingSpec = withBlockAttrs(
+  basicSchema.spec.nodes.get('heading')!,
+  HEADING_EXTRA_PARSE_DOM
+);
 
-const nodesWithBlockIds = basicSchema.spec.nodes.update("paragraph", paragraphSpec).update("heading", headingSpec);
+const nodesWithBlockIds = basicSchema.spec.nodes
+  .update('paragraph', paragraphSpec)
+  .update('heading', headingSpec);
 
 // 1. 基础 nodes + 列表 nodes
-const nodesWithLists = addListNodes(nodesWithBlockIds, "paragraph block*", "block");
+const nodesWithLists = addListNodes(
+  nodesWithBlockIds,
+  'paragraph block*',
+  'block'
+);
 
 // 2. 表格 nodes（§6.4 表格必须插件化实现），单元格新增 cellId + background
 const nodesWithTables = nodesWithLists.append(
   tableNodes({
-    tableGroup: "block",
-    cellContent: "block+",
+    tableGroup: 'block',
+    cellContent: 'block+',
     cellAttributes: {
       background: {
         default: null,
         getFromDOM: (dom) => (dom as HTMLElement).style.backgroundColor || null,
         setDOMAttr: (value, attrs) => {
-          if (value) attrs.style = (attrs.style || "") + `background-color: ${value};`;
+          if (value)
+            attrs.style = (attrs.style || '') + `background-color: ${value};`;
         },
       },
       cellId: {
         default: null,
-        getFromDOM: (dom) => (dom as HTMLElement).getAttribute("data-cell-id"),
+        getFromDOM: (dom) => (dom as HTMLElement).getAttribute('data-cell-id'),
         setDOMAttr: (value, attrs) => {
-          if (value) attrs["data-cell-id"] = value;
+          if (value) attrs['data-cell-id'] = value;
         },
       },
     },
@@ -112,32 +131,36 @@ const nodesWithPlugins = nodesWithTables.append(pluginRegistry.nodes());
 // ---- 4. 新增 Mark：underline / strike / docxStyle / comment ----
 
 const underlineMark: MarkSpec = {
-  parseDOM: [{ tag: "u" }, { style: "text-decoration=underline" }],
-  toDOM: () => ["u", 0],
+  parseDOM: [{ tag: 'u' }, { style: 'text-decoration=underline' }],
+  toDOM: () => ['u', 0],
 };
 
 const strikeMark: MarkSpec = {
-  parseDOM: [{ tag: "s" }, { tag: "strike" }, { style: "text-decoration=line-through" }],
-  toDOM: () => ["s", 0],
+  parseDOM: [
+    { tag: 's' },
+    { tag: 'strike' },
+    { style: 'text-decoration=line-through' },
+  ],
+  toDOM: () => ['s', 0],
 };
 
 const HIGHLIGHT_COLORS: Record<string, string> = {
-  yellow: "#FFFF00",
-  green: "#00FF00",
-  cyan: "#00FFFF",
-  magenta: "#FF00FF",
-  blue: "#0000FF",
-  red: "#FF0000",
-  darkBlue: "#00008B",
-  darkCyan: "#008B8B",
-  darkGreen: "#006400",
-  darkMagenta: "#8B008B",
-  darkRed: "#8B0000",
-  darkYellow: "#808000",
-  darkGray: "#A9A9A9",
-  lightGray: "#D3D3D3",
-  black: "#000000",
-  white: "#FFFFFF",
+  yellow: '#FFFF00',
+  green: '#00FF00',
+  cyan: '#00FFFF',
+  magenta: '#FF00FF',
+  blue: '#0000FF',
+  red: '#FF0000',
+  darkBlue: '#00008B',
+  darkCyan: '#008B8B',
+  darkGreen: '#006400',
+  darkMagenta: '#8B008B',
+  darkRed: '#8B0000',
+  darkYellow: '#808000',
+  darkGray: '#A9A9A9',
+  lightGray: '#D3D3D3',
+  black: '#000000',
+  white: '#FFFFFF',
 };
 
 /**
@@ -157,10 +180,15 @@ const docxStyleMark: MarkSpec = {
   toDOM(mark) {
     const style: string[] = [];
     if (mark.attrs.color) style.push(`color:${mark.attrs.color}`);
-    if (mark.attrs.fontFamily) style.push(`font-family:'${mark.attrs.fontFamily}'`);
-    if (mark.attrs.sizeHalfPt) style.push(`font-size:${Number(mark.attrs.sizeHalfPt) / 2}pt`);
-    if (mark.attrs.highlight) style.push(`background-color:${HIGHLIGHT_COLORS[mark.attrs.highlight] ?? "#FFFF00"}`);
-    return ["span", { style: style.join(";"), class: "docx-style-run" }, 0];
+    if (mark.attrs.fontFamily)
+      style.push(`font-family:'${mark.attrs.fontFamily}'`);
+    if (mark.attrs.sizeHalfPt)
+      style.push(`font-size:${Number(mark.attrs.sizeHalfPt) / 2}pt`);
+    if (mark.attrs.highlight)
+      style.push(
+        `background-color:${HIGHLIGHT_COLORS[mark.attrs.highlight] ?? '#FFFF00'}`
+      );
+    return ['span', { style: style.join(';'), class: 'docx-style-run' }, 0];
   },
 };
 
@@ -169,12 +197,21 @@ const commentMark: MarkSpec = {
   attrs: { id: { default: 0 } },
   parseDOM: [],
   toDOM(mark) {
-    return ["span", { class: "docx-comment", "data-comment-id": String(mark.attrs.id) }, 0];
+    return [
+      'span',
+      { class: 'docx-comment', 'data-comment-id': String(mark.attrs.id) },
+      0,
+    ];
   },
 };
 
 const marksWithExtras = basicSchema.spec.marks
-  .append({ underline: underlineMark, strike: strikeMark, docxStyle: docxStyleMark, comment: commentMark })
+  .append({
+    underline: underlineMark,
+    strike: strikeMark,
+    docxStyle: docxStyleMark,
+    comment: commentMark,
+  })
   .append(pluginRegistry.marks());
 
 export const docSchema = new Schema({
@@ -186,10 +223,10 @@ export type DocxSchema = typeof docSchema;
 
 /** §5.1 文档根结构的空文档，用于新建 / 兜底 */
 export const EMPTY_DOC = {
-  type: "doc",
-  content: [{ type: "paragraph", content: [] }],
+  type: 'doc',
+  content: [{ type: 'paragraph', content: [] }],
 };
 
 export function highlightColorCss(name: string): string {
-  return HIGHLIGHT_COLORS[name] ?? "#FFFF00";
+  return HIGHLIGHT_COLORS[name] ?? '#FFFF00';
 }

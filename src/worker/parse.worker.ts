@@ -9,7 +9,7 @@
  * 这一步也一起放进了 Worker——不再需要像 mammoth 方案那样，回到主线程
  * 用浏览器 DOM 把 HTML 转成 ProseMirror JSON。
  */
-import { parseDocxFile } from "../parser/ooxml";
+import { parseDocxFile } from '../parser/ooxml';
 
 export interface ParseWorkerRequest {
   id: string;
@@ -20,7 +20,12 @@ export interface ParseWorkerResponse {
   id: string;
   ok: boolean;
   json?: any;
-  comments?: { id: number; author: string; date: string | null; text: string }[];
+  comments?: {
+    id: number;
+    author: string;
+    date: string | null;
+    text: string;
+  }[];
   warnings?: string[];
   error?: string;
 }

@@ -1,13 +1,21 @@
-import { createSignal, createEffect, onCleanup, Show } from "solid-js";
-import { EditorState, TextSelection } from "prosemirror-state";
-import { EditorView } from "prosemirror-view";
-import { docSchema } from "../schema";
-import { highlightPluginKey, highlightPlugin, type HighlightMeta } from "../editor/highlightPlugin";
-import { OutlineTree, type OutlineItem } from "../outline/OutlineTree";
-import { computeOutline, findNodeById } from "../outline/computeOutline";
-import "../editor/editor.css";
-import "../outline/outline.css";
-import "./preview.css";
+import { createSignal, createEffect, onCleanup, Show } from 'solid-js';
+import { EditorState, TextSelection } from 'prosemirror-state';
+import { EditorView } from 'prosemirror-view';
+import { docSchema } from '../schema';
+import {
+  highlightPluginKey,
+  highlightPlugin,
+  type HighlightMeta,
+} from '../editor/highlightPlugin';
+import { OutlineTree, type OutlineItem } from '../outline/OutlineTree';
+import {
+  computeOutline,
+  findNodeById,
+  scrollPosIntoView,
+} from '../outline/computeOutline';
+import '../editor/editor.css';
+import '../outline/outline.css';
+import './preview.css';
 
 interface PreviewPaneProps {
   docJson: any;
@@ -35,7 +43,11 @@ export function PreviewPane(props: PreviewPaneProps) {
     if (!hostEl) return;
 
     const doc = docSchema.nodeFromJSON(json);
-    const state = EditorState.create({ schema: docSchema, doc, plugins: [highlightPlugin()] });
+    const state = EditorState.create({
+      schema: docSchema,
+      doc,
+      plugins: [highlightPlugin()],
+    });
     view = new EditorView(hostEl, {
       state,
       editable: () => false,
@@ -59,15 +71,21 @@ export function PreviewPane(props: PreviewPaneProps) {
   };
 
   const scrollToBlock = (id: string) => {
-    if (!view) return;
+    if (!view || !hostEl) return;
     const found = findNodeById(view.state.doc, id);
     if (!found) return;
     const selPos = Math.min(found.pos + 1, view.state.doc.content.size);
     const tr = view.state.tr
       .setSelection(TextSelection.near(view.state.doc.resolve(selPos)))
-      .setMeta(highlightPluginKey, { ids: [id], mode: "replace" } as HighlightMeta)
-      .scrollIntoView();
+      .setMeta(highlightPluginKey, {
+        ids: [id],
+        mode: 'replace',
+      } as HighlightMeta);
     view.dispatch(tr);
+    // 只读视图（editable:false）的 DOM tabIndex 是 -1，focus() 拿不到真实焦点，
+    // 浏览器 DOM 选区也就落不进编辑器容器——所以这里手动滚动，不依赖 PM 内置的
+    // scrollToSelection()（它内部要求"当前选区必须在编辑器 DOM 内"才会生效）。
+    scrollPosIntoView(view, hostEl.parentElement ?? hostEl, selPos);
   };
 
   return (
@@ -75,7 +93,7 @@ export function PreviewPane(props: PreviewPaneProps) {
       <div class="toolbar" role="toolbar" aria-label="预览工具栏">
         <button
           type="button"
-          class={`toolbar-btn${showOutline() ? " is-active" : ""}`}
+          class={`toolbar-btn${showOutline() ? ' is-active' : ''}`}
           onClick={() => setShowOutline((v) => !v)}
           title="显示/隐藏文档目录"
         >

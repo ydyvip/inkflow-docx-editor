@@ -1,14 +1,14 @@
-import type { Schema } from "prosemirror-model";
-import { keymap } from "prosemirror-keymap";
-import { history } from "prosemirror-history";
-import { inputRules } from "prosemirror-inputrules";
-import { dropCursor } from "prosemirror-dropcursor";
-import { gapCursor } from "prosemirror-gapcursor";
-import { columnResizing, tableEditing } from "prosemirror-tables";
-import { buildInputRules, buildKeymap } from "prosemirror-example-setup";
-import { pluginRegistry } from "../plugins/registry";
-import { highlightPlugin } from "./highlightPlugin";
-import { ensureIdsPlugin } from "./ensureIdsPlugin";
+import type { Schema } from 'prosemirror-model';
+import { keymap } from 'prosemirror-keymap';
+import { history } from 'prosemirror-history';
+import { inputRules } from 'prosemirror-inputrules';
+import { dropCursor } from 'prosemirror-dropcursor';
+import { gapCursor } from 'prosemirror-gapcursor';
+import { columnResizing, tableEditing } from 'prosemirror-tables';
+import { buildInputRules, buildKeymap } from 'prosemirror-example-setup';
+import { pluginRegistry } from '../plugins/registry';
+import { highlightPlugin } from './highlightPlugin';
+import { ensureIdsPlugin } from './ensureIdsPlugin';
 
 /**
  * Editor 模块的插件装配。

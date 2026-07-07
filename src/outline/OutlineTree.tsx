@@ -1,5 +1,5 @@
-import { For, Show } from "solid-js";
-import "./outline.css";
+import { For, Show } from 'solid-js';
+import './outline.css';
 
 export interface OutlineItem {
   blockId: string;
@@ -23,13 +23,26 @@ export function OutlineTree(props: OutlineTreeProps) {
   return (
     <div class="outline-panel">
       <div class="side-panel-title">文档目录</div>
-      <Show when={props.items.length > 0} fallback={<div class="side-panel-empty">暂无标题，添加 H1–H3 后会显示在这里</div>}>
+      <Show
+        when={props.items.length > 0}
+        fallback={
+          <div class="side-panel-empty">
+            暂无标题，添加 H1–H3 后会显示在这里
+          </div>
+        }
+      >
         <ul class="outline-list">
           <For each={props.items}>
             {(item) => (
-              <li class={`outline-item outline-level-${item.level}${props.activeId === item.blockId ? " is-active" : ""}`}>
-                <button type="button" onClick={() => props.onJump(item.blockId)} title={item.text}>
-                  {item.text || "（空标题）"}
+              <li
+                class={`outline-item outline-level-${item.level}${props.activeId === item.blockId ? ' is-active' : ''}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => props.onJump(item.blockId)}
+                  title={item.text}
+                >
+                  {item.text || '（空标题）'}
                 </button>
               </li>
             )}

@@ -22,12 +22,12 @@
 export type AIPatchFn = (jsonDoc: any, instruction: string) => Promise<any>;
 
 function collectHeadings(node: any, out: { level: number; text: string }[]) {
-  if (node.type === "heading") {
-    const text = (node.content ?? []).map((c: any) => c.text ?? "").join("");
+  if (node.type === 'heading') {
+    const text = (node.content ?? []).map((c: any) => c.text ?? '').join('');
     if (text.trim()) out.push({ level: node.attrs?.level ?? 1, text });
   }
   for (const child of node.content ?? []) {
-    if (child.type !== "text") collectHeadings(child, out);
+    if (child.type !== 'text') collectHeadings(child, out);
   }
 }
 
@@ -45,15 +45,29 @@ async function localOutlinePatch(jsonDoc: any): Promise<any> {
   }
 
   const outlineParagraphs = headings.map((h) => ({
-    type: "paragraph",
-    content: [{ type: "text", text: `${"　".repeat(Math.max(0, h.level - 1))}· ${h.text}` }],
+    type: 'paragraph',
+    content: [
+      {
+        type: 'text',
+        text: `${'　'.repeat(Math.max(0, h.level - 1))}· ${h.text}`,
+      },
+    ],
   }));
 
   const outlineBlock = {
-    type: "callout",
-    attrs: { tone: "info" },
+    type: 'callout',
+    attrs: { tone: 'info' },
     content: [
-      { type: "paragraph", content: [{ type: "text", text: "📑 自动生成的大纲", marks: [{ type: "strong" }] }] },
+      {
+        type: 'paragraph',
+        content: [
+          {
+            type: 'text',
+            text: '📑 自动生成的大纲',
+            marks: [{ type: 'strong' }],
+          },
+        ],
+      },
       ...outlineParagraphs,
     ],
   };
@@ -68,7 +82,10 @@ async function localOutlinePatch(jsonDoc: any): Promise<any> {
  * 对外统一入口。真实接入时，把 impl 换成你自己的网络请求实现即可，
  * Editor / App 层完全不需要改动。
  */
-export async function applyAIPatch(jsonDoc: any, instruction = "生成大纲"): Promise<any> {
+export async function applyAIPatch(
+  jsonDoc: any,
+  instruction = '生成大纲'
+): Promise<any> {
   const impl: AIPatchFn = localOutlinePatch;
   return impl(jsonDoc, instruction);
 }

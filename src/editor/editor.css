@@ -29,7 +29,10 @@
   border-radius: 6px;
   cursor: pointer;
   line-height: 1;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
   white-space: nowrap;
 }
 
@@ -112,7 +115,7 @@
   padding: 0 4px;
 }
 
-.toolbar-color input[type="color"] {
+.toolbar-color input[type='color'] {
   width: 22px;
   height: 22px;
   padding: 0;
@@ -142,7 +145,9 @@
   min-height: 900px;
   margin: 0 auto;
   background: var(--paper);
-  box-shadow: 0 1px 2px rgba(23, 26, 33, 0.06), 0 12px 32px rgba(23, 26, 33, 0.08);
+  box-shadow:
+    0 1px 2px rgba(23, 26, 33, 0.06),
+    0 12px 32px rgba(23, 26, 33, 0.08);
   border-radius: 3px;
   padding: 72px 76px;
   border-left: 3px solid var(--accent);
@@ -177,12 +182,25 @@
   line-height: 1.3;
   margin: 1.2em 0 0.5em;
 }
-.editor-page .ProseMirror h1 { font-size: 2rem; }
-.editor-page .ProseMirror h2 { font-size: 1.6rem; }
-.editor-page .ProseMirror h3 { font-size: 1.3rem; }
-.editor-page .ProseMirror h4 { font-size: 1.15rem; }
-.editor-page .ProseMirror h5 { font-size: 1.05rem; }
-.editor-page .ProseMirror h6 { font-size: 1rem; color: var(--ink-2); }
+.editor-page .ProseMirror h1 {
+  font-size: 2rem;
+}
+.editor-page .ProseMirror h2 {
+  font-size: 1.6rem;
+}
+.editor-page .ProseMirror h3 {
+  font-size: 1.3rem;
+}
+.editor-page .ProseMirror h4 {
+  font-size: 1.15rem;
+}
+.editor-page .ProseMirror h5 {
+  font-size: 1.05rem;
+}
+.editor-page .ProseMirror h6 {
+  font-size: 1rem;
+  color: var(--ink-2);
+}
 .editor-page .ProseMirror h7,
 .editor-page .ProseMirror h8,
 .editor-page .ProseMirror h9 {
@@ -280,7 +298,21 @@
   border-radius: 3px;
 }
 
+/* 精确区间高亮：用于点击批注时只高亮被批注的那段文字（而不是整段/整块） */
+.editor-page .ProseMirror .pm-highlight-range {
+  animation: pm-highlight-pulse 1.1s ease-out 1;
+  background-color: rgba(249, 217, 128, 0.65);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(224, 168, 46, 0.55);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
 @keyframes pm-highlight-pulse {
-  0% { background-color: rgba(249, 217, 128, 0.85); }
-  100% { background-color: rgba(249, 217, 128, 0.45); }
+  0% {
+    background-color: rgba(249, 217, 128, 0.85);
+  }
+  100% {
+    background-color: rgba(249, 217, 128, 0.45);
+  }
 }

@@ -15,9 +15,9 @@
  * 每个插件还可以声明 docx 导出映射（export()），从而让 Export
  * 模块无需硬编码每个自定义节点的处理逻辑（§6.5 / §11 扩展点）。
  */
-import type { NodeSpec, MarkSpec, Schema } from "prosemirror-model";
-import type { Plugin } from "prosemirror-state";
-import type { InputRule } from "prosemirror-inputrules";
+import type { NodeSpec, MarkSpec, Schema } from 'prosemirror-model';
+import type { Plugin } from 'prosemirror-state';
+import type { InputRule } from 'prosemirror-inputrules';
 
 export interface ToolbarItem {
   id: string;
@@ -61,11 +61,17 @@ class PluginRegistry {
   }
 
   nodes(): Record<string, NodeSpec> {
-    return this.plugins.reduce((acc, p) => ({ ...acc, ...(p.nodes ?? {}) }), {});
+    return this.plugins.reduce(
+      (acc, p) => ({ ...acc, ...(p.nodes ?? {}) }),
+      {}
+    );
   }
 
   marks(): Record<string, MarkSpec> {
-    return this.plugins.reduce((acc, p) => ({ ...acc, ...(p.marks ?? {}) }), {});
+    return this.plugins.reduce(
+      (acc, p) => ({ ...acc, ...(p.marks ?? {}) }),
+      {}
+    );
   }
 }
 

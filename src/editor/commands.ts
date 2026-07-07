@@ -1,7 +1,11 @@
-import type { Schema, Node as PMNode } from "prosemirror-model";
-import type { EditorState, Transaction } from "prosemirror-state";
-import { toggleMark, setBlockType, wrapIn } from "prosemirror-commands";
-import { wrapInList, sinkListItem, liftListItem } from "prosemirror-schema-list";
+import type { Schema, Node as PMNode } from 'prosemirror-model';
+import type { EditorState, Transaction } from 'prosemirror-state';
+import { toggleMark, setBlockType, wrapIn } from 'prosemirror-commands';
+import {
+  wrapInList,
+  sinkListItem,
+  liftListItem,
+} from 'prosemirror-schema-list';
 import {
   addColumnAfter,
   addColumnBefore,
@@ -16,10 +20,13 @@ import {
   toggleHeaderColumn,
   setCellAttr,
   isInTable,
-} from "prosemirror-tables";
-import { insertTable } from "./tableUtils";
+} from 'prosemirror-tables';
+import { insertTable } from './tableUtils';
 
-type Cmd = (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
+type Cmd = (
+  state: EditorState,
+  dispatch?: (tr: Transaction) => void
+) => boolean;
 
 export function markActive(state: EditorState, markType: any): boolean {
   const { from, $from, to, empty } = state.selection;
@@ -27,7 +34,11 @@ export function markActive(state: EditorState, markType: any): boolean {
   return state.doc.rangeHasMark(from, to, markType);
 }
 
-export function blockActive(state: EditorState, nodeType: any, attrs: Record<string, any> = {}): boolean {
+export function blockActive(
+  state: EditorState,
+  nodeType: any,
+  attrs: Record<string, any> = {}
+): boolean {
   const { $from, to, node } = state.selection as any;
   if (node) return node.hasMarkup(nodeType, attrs);
   return to <= $from.end() && $from.parent.hasMarkup(nodeType, attrs);
@@ -40,7 +51,11 @@ export function currentBlockAttr(state: EditorState, key: string): any {
 }
 
 /** 读取选区起点文字上 docxStyle mark 的某个属性（用于字体/字号/颜色控件回显）*/
-export function currentDocxStyleAttr(state: EditorState, markType: any, key: string): any {
+export function currentDocxStyleAttr(
+  state: EditorState,
+  markType: any,
+  key: string
+): any {
   const marks = state.storedMarks || state.selection.$from.marks();
   const mark = markType.isInSet(marks);
   return mark?.attrs?.[key] ?? null;
@@ -48,10 +63,10 @@ export function currentDocxStyleAttr(state: EditorState, markType: any, key: str
 
 export function insertImage(schema: Schema): Cmd {
   return (state, dispatch) => {
-    const src = window.prompt("图片地址（URL 或粘贴 base64）：");
+    const src = window.prompt('图片地址（URL 或粘贴 base64）：');
     if (!src) return false;
     if (dispatch) {
-      const node = schema.nodes.image.create({ src, alt: "" });
+      const node = schema.nodes.image.create({ src, alt: '' });
       dispatch(state.tr.replaceSelectionWith(node).scrollIntoView());
     }
     return true;
@@ -62,10 +77,10 @@ export function insertLink(schema: Schema): Cmd {
   return (state, dispatch) => {
     const { from, to, empty } = state.selection;
     if (empty) {
-      window.alert("请先选中要添加链接的文字");
+      window.alert('请先选中要添加链接的文字');
       return false;
     }
-    const href = window.prompt("链接地址：", "https://");
+    const href = window.prompt('链接地址：', 'https://');
     if (!href) return false;
     if (dispatch) {
       dispatch(state.tr.addMark(from, to, schema.marks.link.create({ href })));
@@ -75,13 +90,16 @@ export function insertLink(schema: Schema): Cmd {
 }
 
 /** 通用：把选区覆盖到的每个 paragraph/heading 节点的属性做一次 patch（setNodeMarkup 不改变节点大小，可在同一个事务里安全地对多个位置连续调用）*/
-function updateBlockAttrs(getPatch: (node: PMNode) => Record<string, any> | null): Cmd {
+function updateBlockAttrs(
+  getPatch: (node: PMNode) => Record<string, any> | null
+): Cmd {
   return (state, dispatch) => {
     const { from, to } = state.selection;
     let tr = state.tr;
     let changed = false;
     state.doc.nodesBetween(from, to, (node, pos) => {
-      if (node.type.name !== "paragraph" && node.type.name !== "heading") return;
+      if (node.type.name !== 'paragraph' && node.type.name !== 'heading')
+        return;
       const patch = getPatch(node);
       if (!patch) return;
       tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...patch });
@@ -105,7 +123,9 @@ export function increaseIndent(schema: Schema): Cmd {
   return (state, dispatch) => {
     const sink = sinkListItem(schema.nodes.list_item);
     if (sink(state, dispatch)) return true;
-    return updateBlockAttrs((node) => ({ indent: Math.min(8, (node.attrs.indent ?? 0) + 1) }))(state, dispatch);
+    return updateBlockAttrs((node) => ({
+      indent: Math.min(8, (node.attrs.indent ?? 0) + 1),
+    }))(state, dispatch);
   };
 }
 
@@ -114,7 +134,9 @@ export function decreaseIndent(schema: Schema): Cmd {
   return (state, dispatch) => {
     const lift = liftListItem(schema.nodes.list_item);
     if (lift(state, dispatch)) return true;
-    return updateBlockAttrs((node) => ({ indent: Math.max(0, (node.attrs.indent ?? 0) - 1) }))(state, dispatch);
+    return updateBlockAttrs((node) => ({
+      indent: Math.max(0, (node.attrs.indent ?? 0) - 1),
+    }))(state, dispatch);
   };
 }
 
@@ -140,7 +162,10 @@ export function setDocxStyle(schema: Schema, patch: DocxStylePatch): Cmd {
         const marks = state.storedMarks || state.selection.$from.marks();
         const current = markType.isInSet(marks);
         const merged = { ...(current?.attrs ?? {}), ...patch };
-        const nextMarks = [...marks.filter((m) => m.type !== markType), markType.create(merged)];
+        const nextMarks = [
+          ...marks.filter((m) => m.type !== markType),
+          markType.create(merged),
+        ];
         dispatch(state.tr.setStoredMarks(nextMarks));
       }
       return true;
@@ -178,10 +203,10 @@ export function buildToolbar(schema: Schema) {
     image: insertImage(schema),
     link: insertLink(schema),
     table: insertTable(3, 3),
-    alignLeft: setAlign("left"),
-    alignCenter: setAlign("center"),
-    alignRight: setAlign("right"),
-    alignJustify: setAlign("justify"),
+    alignLeft: setAlign('left'),
+    alignCenter: setAlign('center'),
+    alignRight: setAlign('right'),
+    alignJustify: setAlign('justify'),
     indentMore: increaseIndent(schema),
     indentLess: decreaseIndent(schema),
   };
@@ -201,7 +226,8 @@ export function buildTableToolbar() {
     splitCell,
     toggleHeaderRow,
     toggleHeaderColumn,
-    setCellBackground: (color: string | null) => setCellAttr("background", color),
+    setCellBackground: (color: string | null) =>
+      setCellAttr('background', color),
   };
 }
 

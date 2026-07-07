@@ -5,32 +5,36 @@
  * 触发方式：在行首输入 ":::" + 空格
  * 快捷键：Mod-Shift-9
  */
-import type { Schema } from "prosemirror-model";
-import { wrappingInputRule } from "prosemirror-inputrules";
-import { wrapIn, lift } from "prosemirror-commands";
-import type { DocxPlugin } from "./registry";
+import type { Schema } from 'prosemirror-model';
+import { wrappingInputRule } from 'prosemirror-inputrules';
+import { wrapIn, lift } from 'prosemirror-commands';
+import type { DocxPlugin } from './registry';
 
 export const calloutPlugin: DocxPlugin = {
-  name: "callout",
+  name: 'callout',
 
   nodes: {
     callout: {
-      content: "paragraph+",
-      group: "block",
+      content: 'paragraph+',
+      group: 'block',
       defining: true,
-      attrs: { tone: { default: "info" } },
+      attrs: { tone: { default: 'info' } },
       parseDOM: [
         {
           tag: 'div[data-type="callout"]',
           getAttrs: (dom) => ({
-            tone: (dom as HTMLElement).getAttribute("data-tone") || "info",
+            tone: (dom as HTMLElement).getAttribute('data-tone') || 'info',
           }),
         },
       ],
       toDOM(node) {
         return [
-          "div",
-          { "data-type": "callout", "data-tone": node.attrs.tone, class: `callout callout-${node.attrs.tone}` },
+          'div',
+          {
+            'data-type': 'callout',
+            'data-tone': node.attrs.tone,
+            class: `callout callout-${node.attrs.tone}`,
+          },
           0,
         ];
       },
@@ -42,16 +46,18 @@ export const calloutPlugin: DocxPlugin = {
   ],
 
   keymap: (schema: Schema) => ({
-    "Mod-Shift-9": wrapIn(schema.nodes.callout),
+    'Mod-Shift-9': wrapIn(schema.nodes.callout),
   }),
 
   toolbar: (schema: Schema) => [
     {
-      id: "callout",
-      label: "💡 提示块",
+      id: 'callout',
+      label: '💡 提示块',
       run: (view) => {
         const { state, dispatch } = view;
-        const inCallout = (state.selection.$from as any).node(-1)?.type === schema.nodes.callout;
+        const inCallout =
+          (state.selection.$from as any).node(-1)?.type ===
+          schema.nodes.callout;
         if (inCallout) {
           lift(state, dispatch);
         } else {
@@ -70,6 +76,9 @@ export const calloutPlugin: DocxPlugin = {
 
   // 导出映射：告诉 Export 模块如何把 callout 节点转成 docx 元素
   exportNode: (node, _toDocxRuns) => {
-    return { __calloutTone: node.attrs?.tone ?? "info", paragraphs: node.content ?? [] };
+    return {
+      __calloutTone: node.attrs?.tone ?? 'info',
+      paragraphs: node.content ?? [],
+    };
   },
 };
