@@ -43,3 +43,21 @@ export const HIGHLIGHT_OPTIONS: {
 ];
 
 export const HEADING_LEVELS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+
+/** 项目符号与编号：一个下拉框覆盖常见的无序/有序列表样式 */
+export interface ListStyleOption {
+  value: string; // "none" | "bullet:disc" | "ordered:decimal" 等
+  label: string;
+}
+
+export const LIST_STYLE_OPTIONS: ListStyleOption[] = [
+  { value: 'none', label: '无列表' },
+  { value: 'bullet:disc', label: '• 实心圆点' },
+  { value: 'bullet:circle', label: '○ 空心圆点' },
+  { value: 'bullet:square', label: '▪ 方块' },
+  { value: 'ordered:decimal', label: '1. 数字' },
+  { value: 'ordered:lower-alpha', label: 'a. 小写字母' },
+  { value: 'ordered:upper-alpha', label: 'A. 大写字母' },
+  { value: 'ordered:lower-roman', label: 'i. 小写罗马数字' },
+  { value: 'ordered:upper-roman', label: 'I. 大写罗马数字' },
+];

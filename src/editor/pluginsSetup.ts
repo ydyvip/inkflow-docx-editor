@@ -9,6 +9,7 @@ import { buildInputRules, buildKeymap } from 'prosemirror-example-setup';
 import { pluginRegistry } from '../plugins/registry';
 import { highlightPlugin } from './highlightPlugin';
 import { ensureIdsPlugin } from './ensureIdsPlugin';
+import { AlignAwareTableView } from './AlignAwareTableView';
 
 /**
  * Editor 模块的插件装配。
@@ -36,7 +37,7 @@ export function buildEditorPlugins(schema: Schema) {
     inputRules({ rules: pluginInputRules }),
     dropCursor(),
     gapCursor(),
-    columnResizing(),
+    columnResizing({ View: AlignAwareTableView }),
     tableEditing(),
     history(),
     highlightPlugin(),

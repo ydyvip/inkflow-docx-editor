@@ -22,6 +22,7 @@ import {
   isInTable,
 } from 'prosemirror-tables';
 import { insertTable } from './tableUtils';
+import type { CellBorder } from '../schema';
 
 type Cmd = (
   state: EditorState,
@@ -61,6 +62,31 @@ export function currentDocxStyleAttr(
   return mark?.attrs?.[key] ?? null;
 }
 
+/** 找到选区所在最近的 list_item 祖先里的 bullet_list/ordered_list 节点（用于列表样式下拉框回显）*/
+export function currentListInfo(
+  state: EditorState
+): { kind: 'bullet' | 'ordered'; style: string } | null {
+  const $from = state.selection.$from;
+  for (let d = $from.depth; d >= 0; d--) {
+    const node = $from.node(d);
+    if (node.type.name === 'bullet_list')
+      return { kind: 'bullet', style: node.attrs.bulletStyle ?? 'disc' };
+    if (node.type.name === 'ordered_list')
+      return { kind: 'ordered', style: node.attrs.numberFormat ?? 'decimal' };
+  }
+  return null;
+}
+
+/** 找到选区所在的 table 节点（用于表格属性面板回显对齐方式等）*/
+export function currentTableNode(state: EditorState): PMNode | null {
+  const $from = state.selection.$from;
+  for (let d = $from.depth; d >= 0; d--) {
+    const node = $from.node(d);
+    if (node.type.name === 'table') return node;
+  }
+  return null;
+}
+
 export function insertImage(schema: Schema): Cmd {
   return (state, dispatch) => {
     const src = window.prompt('图片地址（URL 或粘贴 base64）：');
@@ -73,17 +99,45 @@ export function insertImage(schema: Schema): Cmd {
   };
 }
 
+/**
+ * 插入/编辑/移除超链接。选中已带链接的文字时会读出当前地址回填到输入框，
+ * 清空后确定即可移除链接——对应 Word 里"编辑超链接"/"取消超链接"。
+ */
 export function insertLink(schema: Schema): Cmd {
   return (state, dispatch) => {
     const { from, to, empty } = state.selection;
     if (empty) {
-      window.alert('请先选中要添加链接的文字');
+      window.alert('请先选中要添加或编辑链接的文字');
       return false;
     }
-    const href = window.prompt('链接地址：', 'https://');
-    if (!href) return false;
+    const markType = schema.marks.link;
+    // 用 nodesBetween 直接扫描选区内的文字节点找现有链接的 href，
+    // 比 resolve(pos).marks() 更可靠——后者在节点边界位置的取值语义比较微妙，
+    // 选区恰好等于整个链接范围时容易判断不到已有的 mark。
+    let currentHref: string | null = null;
+    state.doc.nodesBetween(from, to, (node) => {
+      if (currentHref) return false;
+      if (node.isText) {
+        const mark = markType.isInSet(node.marks);
+        if (mark) currentHref = mark.attrs.href;
+      }
+      return true;
+    });
+    const href = window.prompt(
+      '链接地址（清空后确定可移除链接）：',
+      currentHref ?? 'https://'
+    );
+    if (href === null) return false; // 用户取消
     if (dispatch) {
-      dispatch(state.tr.addMark(from, to, schema.marks.link.create({ href })));
+      let tr = state.tr.removeMark(from, to, markType);
+      if (href.trim()) {
+        tr = tr.addMark(
+          from,
+          to,
+          markType.create({ href: href.trim(), title: null })
+        );
+      }
+      dispatch(tr);
     }
     return true;
   };
@@ -140,6 +194,68 @@ export function decreaseIndent(schema: Schema): Cmd {
   };
 }
 
+/**
+ * 清除格式：对应 Word 的"清除格式"（Ctrl+空格 / 橡皮擦图标）。
+ * 移除选区内所有"格式类" mark（加粗/斜体/下划线/删除线/代码/字体样式），
+ * 并把覆盖到的段落/标题的排版属性（对齐/缩进/行距/命名样式）重置为默认值。
+ * 批注（comment）和超链接（link）不算"格式"，予以保留——与 Word 行为一致。
+ */
+const CLEARABLE_MARK_NAMES = [
+  'strong',
+  'em',
+  'underline',
+  'strike',
+  'code',
+  'docxStyle',
+];
+
+export function clearFormatting(schema: Schema): Cmd {
+  return (state, dispatch) => {
+    const { from, to, empty } = state.selection;
+    if (!dispatch) return true;
+
+    if (empty) {
+      let tr = state.tr.setStoredMarks([]);
+      const $pos = state.doc.resolve(from);
+      for (let d = $pos.depth; d >= 0; d--) {
+        const node = $pos.node(d);
+        if (node.type.name === 'paragraph' || node.type.name === 'heading') {
+          const pos = $pos.before(d);
+          tr = tr.setNodeMarkup(pos, undefined, {
+            ...node.attrs,
+            align: null,
+            indent: 0,
+            lineSpacing: null,
+            styleName: null,
+          });
+          break;
+        }
+      }
+      dispatch(tr);
+      return true;
+    }
+
+    let tr = state.tr;
+    for (const name of CLEARABLE_MARK_NAMES) {
+      const markType = (schema.marks as Record<string, any>)[name];
+      if (markType) tr = tr.removeMark(from, to, markType);
+    }
+    state.doc.nodesBetween(from, to, (node, pos) => {
+      if (node.type.name === 'paragraph' || node.type.name === 'heading') {
+        tr = tr.setNodeMarkup(pos, undefined, {
+          ...node.attrs,
+          align: null,
+          indent: 0,
+          lineSpacing: null,
+          styleName: null,
+        });
+      }
+    });
+    dispatch(tr);
+    return true;
+  };
+}
+
 export interface DocxStylePatch {
   color?: string | null;
   fontFamily?: string | null;
@@ -188,6 +304,79 @@ export function setDocxStyle(schema: Schema, patch: DocxStylePatch): Cmd {
   };
 }
 
+/**
+ * 项目符号 / 编号样式（§ 项目符号与编号）。
+ * 已经在列表里时直接改当前列表的类型/样式属性；不在列表里时包一层新列表。
+ * kind="none" 表示"取消列表"。
+ */
+export function setListStyle(
+  schema: Schema,
+  kind: 'none' | 'bullet' | 'ordered',
+  styleValue?: string
+): Cmd {
+  return (state, dispatch) => {
+    const $from = state.selection.$from;
+    for (let d = $from.depth; d >= 0; d--) {
+      const node = $from.node(d);
+      if (
+        node.type.name === 'bullet_list' ||
+        node.type.name === 'ordered_list'
+      ) {
+        if (kind === 'none') {
+          return liftListItem(schema.nodes.list_item)(state, dispatch);
+        }
+        const pos = $from.before(d);
+        const newType =
+          kind === 'bullet'
+            ? schema.nodes.bullet_list
+            : schema.nodes.ordered_list;
+        const attrKey = kind === 'bullet' ? 'bulletStyle' : 'numberFormat';
+        if (dispatch) {
+          const tr = state.tr;
+          if (node.type === newType) {
+            tr.setNodeMarkup(pos, undefined, {
+              ...node.attrs,
+              [attrKey]: styleValue,
+            });
+          } else {
+            tr.setNodeMarkup(pos, newType, { [attrKey]: styleValue });
+          }
+          dispatch(tr);
+        }
+        return true;
+      }
+    }
+    if (kind === 'none') return false;
+    const listType =
+      kind === 'bullet' ? schema.nodes.bullet_list : schema.nodes.ordered_list;
+    const attrs =
+      kind === 'bullet'
+        ? { bulletStyle: styleValue }
+        : { numberFormat: styleValue };
+    return wrapInList(listType, attrs)(state, dispatch);
+  };
+}
+
+/** 表格在页面中的对齐方式（左/中/右）*/
+export function setTableAlign(align: string | null): Cmd {
+  return (state, dispatch) => {
+    const $from = state.selection.$from;
+    for (let d = $from.depth; d >= 0; d--) {
+      const node = $from.node(d);
+      if (node.type.name === 'table') {
+        if (dispatch) {
+          const pos = $from.before(d);
+          dispatch(
+            state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, align })
+          );
+        }
+        return true;
+      }
+    }
+    return false;
+  };
+}
+
 export function buildToolbar(schema: Schema) {
   return {
     bold: toggleMark(schema.marks.strong),
@@ -209,6 +398,7 @@ export function buildToolbar(schema: Schema) {
     alignJustify: setAlign('justify'),
     indentMore: increaseIndent(schema),
     indentLess: decreaseIndent(schema),
+    clearFormatting: clearFormatting(schema),
   };
 }
 
@@ -228,6 +418,11 @@ export function buildTableToolbar() {
     toggleHeaderColumn,
     setCellBackground: (color: string | null) =>
       setCellAttr('background', color),
+    setCellVAlign: (value: string | null) => setCellAttr('valign', value),
+    setCellTextDirection: (value: string | null) =>
+      setCellAttr('textDirection', value),
+    setCellBorder: (value: CellBorder | null) =>
+      setCellAttr('cellBorder', value),
   };
 }
 

@@ -13,7 +13,8 @@
     "make-rich-sample": "node scripts/make-rich-sample.mjs",
     "e2e": "node scripts/e2e-test.mjs",
     "e2e:features": "node scripts/e2e-test-features.mjs",
-    "e2e:office": "node scripts/e2e-test-office.mjs"
+    "e2e:office": "node scripts/e2e-test-office.mjs",
+    "e2e:advanced": "node scripts/e2e-test-advanced.mjs"
   },
   "dependencies": {
     "docx": "^9.7.1",

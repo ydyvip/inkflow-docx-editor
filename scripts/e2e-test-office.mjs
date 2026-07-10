@@ -84,7 +84,7 @@ try {
     `outline shown in both Editor (${editOutlineCount}) and Preview (${previewOutlineCount}); preview click-to-jump highlights too`
   );
   await page.getByRole('tab', { name: '编辑' }).click();
-  await page.waitForTimeout(400); // 等待 EditorPane 重新挂载（切回编辑态会重建 EditorView）
+  await page.waitForTimeout(700); // 等待 EditorPane 重新挂载（切回编辑态会重建 EditorView）
 
   // ---- 3. Font / color / highlight / underline / strike ----
   await newLineAtEnd();

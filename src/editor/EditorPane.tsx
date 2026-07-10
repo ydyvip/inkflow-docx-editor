@@ -11,10 +11,19 @@ import {
   markActive,
   currentBlockAttr,
   currentDocxStyleAttr,
+  currentListInfo,
+  currentTableNode,
   setDocxStyle,
   setLineSpacing,
+  setListStyle,
+  setTableAlign,
   isInTable,
 } from './commands';
+import type { CellBorder } from '../schema';
+import {
+  TablePropertiesModal,
+  type TablePropertiesValues,
+} from './TablePropertiesModal';
 import { pluginRegistry } from '../plugins/registry';
 import { highlightPluginKey, type HighlightMeta } from './highlightPlugin';
 import { OutlineTree, type OutlineItem } from '../outline/OutlineTree';
@@ -30,6 +39,7 @@ import {
   LINE_SPACING_OPTIONS,
   HIGHLIGHT_OPTIONS,
   HEADING_LEVELS,
+  LIST_STYLE_OPTIONS,
 } from './formatOptions';
 import './editor.css';
 
@@ -76,6 +86,7 @@ export function EditorPane(props: EditorPaneProps) {
   const [showComments, setShowComments] = createSignal(
     (props.initialComments?.length ?? 0) > 0
   );
+  const [showTableProps, setShowTableProps] = createSignal(false);
 
   const dispatchHighlight = (meta: HighlightMeta) => {
     if (!view) return;
@@ -301,6 +312,19 @@ export function EditorPane(props: EditorPaneProps) {
     return view ? isInTable(view.state) : false;
   };
 
+  const currentListValue = () => {
+    version();
+    if (!view) return 'none';
+    const info = currentListInfo(view.state);
+    if (!info) return 'none';
+    return `${info.kind}:${info.style}`;
+  };
+
+  const isLinkActive = () => {
+    version();
+    return view ? markActive(view.state, docSchema.marks.link) : false;
+  };
+
   // ---- 命令绑定 ----
 
   const toolbar = buildToolbar(docSchema);
@@ -324,6 +348,53 @@ export function EditorPane(props: EditorPaneProps) {
     runCommand(setDocxStyle(docSchema, { highlight: value || null }));
   const onLineSpacingChange = (value: string) =>
     runCommand(setLineSpacing(value ? Number(value) : null));
+
+  const onListStyleChange = (value: string) => {
+    if (value === 'none') {
+      runCommand(setListStyle(docSchema, 'none'));
+      return;
+    }
+    const [kind, style] = value.split(':') as ['bullet' | 'ordered', string];
+    runCommand(setListStyle(docSchema, kind, style));
+  };
+
+  const tablePropsInitial = (): TablePropertiesValues => {
+    const table = view ? currentTableNode(view.state) : null;
+    return {
+      tableAlign: (table?.attrs?.align as any) ?? 'left',
+      cellVAlign: 'top',
+      textDirection: 'horizontal',
+      borderStyle: 'single',
+      borderWidth: 1,
+      borderColor: '#333333',
+      cellBackground: '#ffffff',
+    };
+  };
+
+  const applyTableProperties = (values: TablePropertiesValues) => {
+    if (!view) return;
+    runCommand(setTableAlign(values.tableAlign));
+    runCommand(
+      tableToolbar.setCellVAlign(
+        values.cellVAlign === 'top' ? null : values.cellVAlign
+      )
+    );
+    runCommand(
+      tableToolbar.setCellTextDirection(
+        values.textDirection === 'horizontal' ? null : 'vertical'
+      )
+    );
+    const border: CellBorder | null =
+      values.borderStyle === 'none'
+        ? { style: 'none', width: 0, color: values.borderColor }
+        : {
+            style: values.borderStyle,
+            width: values.borderWidth,
+            color: values.borderColor,
+          };
+    runCommand(tableToolbar.setCellBorder(border));
+    runCommand(tableToolbar.setCellBackground(values.cellBackground));
+  };
 
   interface BtnDef {
     id: string;
@@ -375,16 +446,16 @@ export function EditorPane(props: EditorPaneProps) {
           </For>
         </select>
         <span class="toolbar-divider" />
-        <Btn
-          id="ul"
-          label="• 列表"
-          onClick={() => runCommand(toolbar.bulletList)}
-        />
-        <Btn
-          id="ol"
-          label="1. 列表"
-          onClick={() => runCommand(toolbar.orderedList)}
-        />
+        <select
+          class="toolbar-select"
+          value={currentListValue()}
+          onChange={(e) => onListStyleChange(e.currentTarget.value)}
+          title="项目符号与编号"
+        >
+          <For each={LIST_STYLE_OPTIONS}>
+            {(opt) => <option value={opt.value}>{opt.label}</option>}
+          </For>
+        </select>
         <Btn
           id="quote"
           label="❝ 引用"
@@ -395,6 +466,8 @@ export function EditorPane(props: EditorPaneProps) {
           id="link"
           label="🔗 链接"
           onClick={() => runCommand(toolbar.link)}
+          active={isLinkActive}
+          title="插入/编辑/移除链接"
         />
         <Btn
           id="image"
@@ -563,6 +636,13 @@ export function EditorPane(props: EditorPaneProps) {
             {(l) => <option value={l.value}>{l.label}</option>}
           </For>
         </select>
+        <span class="toolbar-divider" />
+        <Btn
+          id="clear-format"
+          label="🧹 清除格式"
+          onClick={() => runCommand(toolbar.clearFormatting)}
+          title="清除字符与段落格式（不影响批注/链接）"
+        />
       </div>
 
       {/* Row 3（条件显示）：光标位于表格内时出现，Office 式表格上下文工具栏 */}
@@ -642,7 +722,22 @@ export function EditorPane(props: EditorPaneProps) {
               }
             />
           </label>
+          <span class="toolbar-divider" />
+          <Btn
+            id="table-props"
+            label="⚙ 表格属性"
+            onClick={() => setShowTableProps(true)}
+            title="表格对齐 / 单元格对齐方向 / 文字方向 / 边框底纹"
+          />
         </div>
+      </Show>
+
+      <Show when={showTableProps()}>
+        <TablePropertiesModal
+          initial={tablePropsInitial()}
+          onClose={() => setShowTableProps(false)}
+          onApply={applyTableProperties}
+        />
       </Show>
 
       <div class="editor-body">

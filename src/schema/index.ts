@@ -34,6 +34,12 @@ import { calloutPlugin } from '../plugins/calloutPlugin';
 // 注册内置插件（应用启动时一次性完成，早于 schema 构建）
 pluginRegistry.register(calloutPlugin);
 
+export interface CellBorder {
+  style: 'none' | 'single' | 'dashed' | 'double';
+  width: number; // 磅（pt）
+  color: string; // #rrggbb
+}
+
 // ---- 1. 给 paragraph / heading 扩展 blockId / styleName / align / indent / lineSpacing ----
 
 function withBlockAttrs(
@@ -100,30 +106,135 @@ const nodesWithLists = addListNodes(
   'block'
 );
 
-// 2. 表格 nodes（§6.4 表格必须插件化实现），单元格新增 cellId + background
-const nodesWithTables = nodesWithLists.append(
-  tableNodes({
-    tableGroup: 'block',
-    cellContent: 'block+',
-    cellAttributes: {
-      background: {
-        default: null,
-        getFromDOM: (dom) => (dom as HTMLElement).style.backgroundColor || null,
-        setDOMAttr: (value, attrs) => {
-          if (value)
-            attrs.style = (attrs.style || '') + `background-color: ${value};`;
-        },
-      },
-      cellId: {
-        default: null,
-        getFromDOM: (dom) => (dom as HTMLElement).getAttribute('data-cell-id'),
-        setDOMAttr: (value, attrs) => {
-          if (value) attrs['data-cell-id'] = value;
-        },
+// ---- 1b. 项目符号 / 编号样式（§ 项目符号与编号）----
+// bullet_list 新增 bulletStyle（对应 CSS list-style-type 的 disc/circle/square），
+// ordered_list 新增 numberFormat（decimal/lower-alpha/upper-alpha/lower-roman/upper-roman，
+// 与 CSS list-style-type 关键字一致，导出时映射到 docx.js 的 LevelFormat）。
+function withListStyleAttr(
+  base: NodeSpec,
+  attrName: string,
+  defaultValue: string
+): NodeSpec {
+  return {
+    ...base,
+    attrs: { ...(base.attrs ?? {}), [attrName]: { default: defaultValue } },
+    toDOM(node) {
+      const baseArr = (base.toDOM
+        ? base.toDOM(node)
+        : ['ul', 0]) as unknown as any[];
+      const tag = baseArr[0];
+      const hole = baseArr[baseArr.length - 1];
+      const domAttrs: Record<string, any> =
+        baseArr.length === 3 ? { ...baseArr[1] } : {};
+      const styleVal = node.attrs[attrName];
+      if (styleVal && styleVal !== defaultValue) {
+        domAttrs.style =
+          (domAttrs.style ? domAttrs.style + ';' : '') +
+          `list-style-type:${styleVal}`;
+      }
+      return [tag, domAttrs, hole];
+    },
+  };
+}
+
+const bulletListSpec = withListStyleAttr(
+  nodesWithLists.get('bullet_list')!,
+  'bulletStyle',
+  'disc'
+);
+const orderedListSpec = withListStyleAttr(
+  nodesWithLists.get('ordered_list')!,
+  'numberFormat',
+  'decimal'
+);
+const nodesWithListStyles = nodesWithLists
+  .update('bullet_list', bulletListSpec)
+  .update('ordered_list', orderedListSpec);
+
+// 2. 表格 nodes（§6.4 表格必须插件化实现）
+//    - table 新增 align（表格在页面中的左/中/右对齐）
+//    - 单元格新增 cellId / background（已有）+ valign（垂直对齐）/ textDirection（文字方向）/
+//      cellBorder（边框：style+width+color 一体存储，避免多属性拼 style 字符串时互相覆盖）
+const rawTableNodes = tableNodes({
+  tableGroup: 'block',
+  cellContent: 'block+',
+  cellAttributes: {
+    background: {
+      default: null,
+      getFromDOM: (dom) => (dom as HTMLElement).style.backgroundColor || null,
+      setDOMAttr: (value, attrs) => {
+        if (value)
+          attrs.style = (attrs.style || '') + `background-color: ${value};`;
       },
     },
-  })
-);
+    cellId: {
+      default: null,
+      getFromDOM: (dom) => (dom as HTMLElement).getAttribute('data-cell-id'),
+      setDOMAttr: (value, attrs) => {
+        if (value) attrs['data-cell-id'] = value;
+      },
+    },
+    valign: {
+      default: null, // 'middle' | 'bottom' | null(=top，不写内联样式)
+      getFromDOM: (dom) => {
+        const v = (dom as HTMLElement).style.verticalAlign;
+        return v === 'middle' || v === 'bottom' ? v : null;
+      },
+      setDOMAttr: (value, attrs) => {
+        if (value && value !== 'top')
+          attrs.style = (attrs.style || '') + `vertical-align:${value};`;
+      },
+    },
+    textDirection: {
+      default: null, // 'vertical' | null(=horizontal)
+      getFromDOM: (dom) =>
+        (dom as HTMLElement).getAttribute('data-text-direction'),
+      setDOMAttr: (value, attrs) => {
+        if (value === 'vertical') {
+          attrs.style =
+            (attrs.style || '') +
+            `writing-mode:vertical-rl;text-orientation:upright;`;
+          attrs['data-text-direction'] = 'vertical';
+        }
+      },
+    },
+    cellBorder: {
+      default: null as CellBorder | null,
+      setDOMAttr: (value: any, attrs: Record<string, any>) => {
+        const border = value as CellBorder | null;
+        if (border && border.style && border.style !== 'none') {
+          const cssStyle =
+            border.style === 'double'
+              ? 'double'
+              : border.style === 'dashed'
+                ? 'dashed'
+                : 'solid';
+          attrs.style =
+            (attrs.style || '') +
+            `border:${border.width || 1}pt ${cssStyle} ${border.color || '#000000'};`;
+        }
+      },
+    },
+  },
+});
+
+const tableSpecWithAlign: NodeSpec = {
+  ...rawTableNodes.table,
+  attrs: { ...(rawTableNodes.table.attrs ?? {}), align: { default: null } },
+  toDOM(node) {
+    const domAttrs: Record<string, string> = {};
+    if (node.attrs.align === 'center')
+      domAttrs.style = 'margin-left:auto;margin-right:auto;';
+    else if (node.attrs.align === 'right')
+      domAttrs.style = 'margin-left:auto;margin-right:0;';
+    return ['table', domAttrs, ['tbody', 0]];
+  },
+};
+
+const nodesWithTables = nodesWithListStyles.append({
+  ...rawTableNodes,
+  table: tableSpecWithAlign,
+});
 
 // 3. 插件自定义 nodes
 const nodesWithPlugins = nodesWithTables.append(pluginRegistry.nodes());

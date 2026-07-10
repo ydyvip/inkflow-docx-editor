@@ -18,6 +18,22 @@
     box-shadow 0.15s ease;
 }
 
+.comment-item.is-new {
+  animation: comment-flash 1.6s ease-out 1;
+  border-color: var(--accent);
+}
+
+@keyframes comment-flash {
+  0% {
+    background: var(--accent-wash);
+    box-shadow: 0 0 0 3px var(--accent-wash);
+  }
+  100% {
+    background: var(--paper);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
 .comment-item:hover {
   border-color: var(--accent-soft);
   box-shadow: 0 2px 8px rgba(23, 26, 33, 0.06);

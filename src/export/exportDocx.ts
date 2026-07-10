@@ -34,11 +34,14 @@ import {
   WidthType,
   ShadingType,
   LineRuleType,
+  VerticalAlignTable,
+  TextDirection,
   CommentRangeStart,
   CommentRangeEnd,
   CommentReference,
   type ParagraphChild,
   type ICommentOptions,
+  type ITableCellBorders,
 } from 'docx';
 import { saveAs } from 'file-saver';
 import { pluginRegistry } from '../plugins/registry';
@@ -49,6 +52,7 @@ import {
   remoteImageToDataUrl,
 } from './imageUtils';
 import type { DocxComment } from '../parser/ooxml';
+import type { CellBorder } from '../schema';
 
 const HEADING_MAP: Record<
   number,
@@ -102,36 +106,103 @@ function mapAlign(align: string | null | undefined) {
   return align ? ALIGN_MAP[align] : undefined;
 }
 
-const ORDERED_LIST_REF = 'docflow-ordered-list';
+const TABLE_ALIGN_MAP: Record<
+  string,
+  (typeof AlignmentType)[keyof typeof AlignmentType]
+> = {
+  left: AlignmentType.LEFT,
+  center: AlignmentType.CENTER,
+  right: AlignmentType.RIGHT,
+};
+
+const VALIGN_MAP: Record<
+  string,
+  (typeof VerticalAlignTable)[keyof typeof VerticalAlignTable]
+> = {
+  top: VerticalAlignTable.TOP,
+  middle: VerticalAlignTable.CENTER,
+  bottom: VerticalAlignTable.BOTTOM,
+};
+
+const CELL_BORDER_STYLE_MAP: Record<
+  string,
+  (typeof BorderStyle)[keyof typeof BorderStyle]
+> = {
+  single: BorderStyle.SINGLE,
+  dashed: BorderStyle.DASHED,
+  double: BorderStyle.DOUBLE,
+};
+
+function mapCellBorders(
+  border: CellBorder | null | undefined
+): ITableCellBorders | undefined {
+  if (!border || border.style === 'none') return undefined;
+  const side = {
+    style: CELL_BORDER_STYLE_MAP[border.style] ?? BorderStyle.SINGLE,
+    size: Math.round((border.width || 1) * 8), // docx.js 边框 size 单位是 1/8 磅
+    color: (border.color || '#000000').replace('#', ''),
+  };
+  return { top: side, bottom: side, left: side, right: side };
+}
+
+/** 项目符号（disc/circle/square）→ 用于编号定义的实际字符 */
+const BULLET_CHAR_MAP: Record<string, string> = {
+  disc: '●',
+  circle: '○',
+  square: '▪',
+};
+
+/** 编号格式（decimal/lower-alpha/...）→ docx.js LevelFormat + 文本模板 */
+const NUMBER_FORMAT_MAP: Record<
+  string,
+  { format: (typeof LevelFormat)[keyof typeof LevelFormat]; text: string }
+> = {
+  decimal: { format: LevelFormat.DECIMAL, text: '%1.' },
+  'lower-alpha': { format: LevelFormat.LOWER_LETTER, text: '%1)' },
+  'upper-alpha': { format: LevelFormat.UPPER_LETTER, text: '%1)' },
+  'lower-roman': { format: LevelFormat.LOWER_ROMAN, text: '%1.' },
+  'upper-roman': { format: LevelFormat.UPPER_ROMAN, text: '%1.' },
+};
+
+function orderedListRef(numberFormat: string): string {
+  return `docflow-ordered-${numberFormat}`;
+}
+function bulletListRef(bulletStyle: string): string {
+  return `docflow-bullet-${bulletStyle}`;
+}
+
+/** 三级缩进的编号定义（每一级都用同一种格式，缩进依次加深）*/
+function buildOrderedLevels(numberFormat: string) {
+  const info = NUMBER_FORMAT_MAP[numberFormat] ?? NUMBER_FORMAT_MAP.decimal;
+  return [0, 1, 2].map((level) => ({
+    level,
+    format: info.format,
+    text: info.text,
+    alignment: AlignmentType.START,
+    style: { paragraph: { indent: { left: 720 * (level + 1), hanging: 260 } } },
+  }));
+}
+function buildBulletLevels(bulletStyle: string) {
+  const char = BULLET_CHAR_MAP[bulletStyle] ?? BULLET_CHAR_MAP.disc;
+  return [0, 1, 2].map((level) => ({
+    level,
+    format: LevelFormat.BULLET,
+    text: char,
+    alignment: AlignmentType.START,
+    style: { paragraph: { indent: { left: 720 * (level + 1), hanging: 260 } } },
+  }));
+}
 
 const NUMBERING_CONFIG = {
   config: [
-    {
-      reference: ORDERED_LIST_REF,
-      levels: [
-        {
-          level: 0,
-          format: LevelFormat.DECIMAL,
-          text: '%1.',
-          alignment: AlignmentType.START,
-          style: { paragraph: { indent: { left: 720, hanging: 260 } } },
-        },
-        {
-          level: 1,
-          format: LevelFormat.LOWER_LETTER,
-          text: '%2)',
-          alignment: AlignmentType.START,
-          style: { paragraph: { indent: { left: 1440, hanging: 260 } } },
-        },
-        {
-          level: 2,
-          format: LevelFormat.LOWER_ROMAN,
-          text: '%3.',
-          alignment: AlignmentType.START,
-          style: { paragraph: { indent: { left: 2160, hanging: 260 } } },
-        },
-      ],
-    },
+    ...Object.keys(NUMBER_FORMAT_MAP).map((fmt) => ({
+      reference: orderedListRef(fmt),
+      levels: buildOrderedLevels(fmt),
+    })),
+    ...Object.keys(BULLET_CHAR_MAP).map((style) => ({
+      reference: bulletListRef(style),
+      levels: buildBulletLevels(style),
+    })),
   ],
 };
 
@@ -280,6 +351,9 @@ async function listToDocx(
   overrides: Record<string, any>
 ): Promise<Paragraph[]> {
   const out: Paragraph[] = [];
+  const reference = ordered
+    ? orderedListRef(listNode.attrs?.numberFormat ?? 'decimal')
+    : bulletListRef(listNode.attrs?.bulletStyle ?? 'disc');
   for (const item of listNode.content ?? []) {
     for (const child of item.content ?? []) {
       if (child.type === 'paragraph') {
@@ -290,14 +364,7 @@ async function listToDocx(
             alignment: mapAlign(child.attrs?.align),
             indent: mapIndent(child.attrs?.indent),
             spacing: mapSpacing(child.attrs?.lineSpacing),
-            ...(ordered
-              ? {
-                  numbering: {
-                    reference: ORDERED_LIST_REF,
-                    level: Math.min(depth, 2),
-                  },
-                }
-              : { bullet: { level: Math.min(depth, 8) } }),
+            numbering: { reference, level: Math.min(depth, 2) },
             children,
           })
         );
@@ -349,12 +416,26 @@ async function tableToDocx(node: any): Promise<Table> {
             cellNode.attrs?.rowspan && cellNode.attrs.rowspan > 1
               ? cellNode.attrs.rowspan
               : undefined,
+          verticalAlign: cellNode.attrs?.valign
+            ? VALIGN_MAP[cellNode.attrs.valign]
+            : undefined,
+          textDirection:
+            cellNode.attrs?.textDirection === 'vertical'
+              ? TextDirection.TOP_TO_BOTTOM_RIGHT_TO_LEFT
+              : undefined,
+          borders: mapCellBorders(cellNode.attrs?.cellBorder),
         })
       );
     }
     rows.push(new TableRow({ children: cells }));
   }
-  return new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } });
+  return new Table({
+    rows,
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    alignment: node.attrs?.align
+      ? TABLE_ALIGN_MAP[node.attrs.align]
+      : undefined,
+  });
 }
 
 /** 提示块底色（对应 calloutPlugin 的 tone 属性）*/

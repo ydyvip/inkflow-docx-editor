@@ -267,20 +267,50 @@ function parseStylesXml(doc: Document): Map<string, StyleInfo> {
 }
 
 // ---------------------------------------------------------------------------
-// numbering.xml —— 列表格式（区分有序/无序）
+// numbering.xml —— 列表格式（区分有序/无序，并识别具体样式）
 // ---------------------------------------------------------------------------
 
-function parseNumberingXml(doc: Document): Map<string, Map<number, boolean>> {
-  const abstractFormats = new Map<string, Map<number, boolean>>();
+export interface NumberingLevelInfo {
+  ordered: boolean;
+  numberFormat: string; // 'decimal' | 'lower-alpha' | 'upper-alpha' | 'lower-roman' | 'upper-roman'
+  bulletStyle: string; // 'disc' | 'circle' | 'square'
+}
+
+const OOXML_NUMFMT_MAP: Record<string, string> = {
+  decimal: 'decimal',
+  lowerLetter: 'lower-alpha',
+  upperLetter: 'upper-alpha',
+  lowerRoman: 'lower-roman',
+  upperRoman: 'upper-roman',
+};
+
+/** 项目符号的具体形状（圆点/空心圆/方块）由 w:lvlText 的实际字符决定，这里做启发式识别 */
+function detectBulletStyle(lvlText: string | null): string {
+  if (!lvlText) return 'disc';
+  if (/[○ｏo]/.test(lvlText)) return 'circle';
+  if (/[▪■□§]/.test(lvlText)) return 'square';
+  return 'disc';
+}
+
+function parseNumberingXml(
+  doc: Document
+): Map<string, Map<number, NumberingLevelInfo>> {
+  const abstractFormats = new Map<string, Map<number, NumberingLevelInfo>>();
 
   for (const abs of Array.from(doc.getElementsByTagNameNS(W, 'abstractNum'))) {
     const absId = abs.getAttribute('w:abstractNumId');
     if (absId == null) continue;
-    const levelMap = new Map<number, boolean>();
+    const levelMap = new Map<number, NumberingLevelInfo>();
     for (const lvl of children(abs, 'lvl')) {
       const ilvl = Number(lvl.getAttribute('w:ilvl') ?? '0');
       const fmt = wAttr(child(lvl, 'numFmt'), 'val') ?? 'bullet';
-      levelMap.set(ilvl, fmt !== 'bullet' && fmt !== 'none');
+      const ordered = fmt !== 'bullet' && fmt !== 'none';
+      const lvlText = wAttr(child(lvl, 'lvlText'), 'val');
+      levelMap.set(ilvl, {
+        ordered,
+        numberFormat: OOXML_NUMFMT_MAP[fmt] ?? 'decimal',
+        bulletStyle: detectBulletStyle(lvlText),
+      });
     }
     abstractFormats.set(absId, levelMap);
   }
@@ -292,7 +322,7 @@ function parseNumberingXml(doc: Document): Map<string, Map<number, boolean>> {
     if (numId != null && absId != null) numToAbstract.set(numId, absId);
   }
 
-  const result = new Map<string, Map<number, boolean>>();
+  const result = new Map<string, Map<number, NumberingLevelInfo>>();
   for (const [numId, absId] of numToAbstract) {
     const lvlMap = abstractFormats.get(absId);
     if (lvlMap) result.set(numId, lvlMap);
@@ -373,7 +403,7 @@ function parseCommentsXml(doc: Document): DocxComment[] {
 
 interface ParseCtx {
   styles: Map<string, StyleInfo>;
-  numbering: Map<string, Map<number, boolean>>;
+  numbering: Map<string, Map<number, NumberingLevelInfo>>;
   rels: Map<string, string>;
   media: Map<string, string>;
   warnings: string[];
@@ -383,7 +413,14 @@ interface ParseCtx {
 
 type FlatBlock =
   | { kind: 'block'; node: any }
-  | { kind: 'listItem'; level: number; ordered: boolean; node: any };
+  | {
+      kind: 'listItem';
+      level: number;
+      ordered: boolean;
+      numberFormat: string;
+      bulletStyle: string;
+      node: any;
+    };
 
 function buildMarksFromRunProps(p: RunProps, activeComments: number[]): any[] {
   const marks: any[] = [];
@@ -541,15 +578,28 @@ function parseInlineContent(
 
 function foldListBlocks(flat: FlatBlock[]): any[] {
   const out: any[] = [];
-  const stack: { level: number; ordered: boolean; items: any[] }[] = [];
+  const stack: {
+    level: number;
+    ordered: boolean;
+    numberFormat: string;
+    bulletStyle: string;
+    items: any[];
+  }[] = [];
 
   const closeTop = () => {
     const top = stack.pop();
     if (!top) return;
-    const listNode = {
-      type: top.ordered ? 'ordered_list' : 'bullet_list',
-      content: top.items,
-    };
+    const listNode = top.ordered
+      ? {
+          type: 'ordered_list',
+          attrs: { numberFormat: top.numberFormat },
+          content: top.items,
+        }
+      : {
+          type: 'bullet_list',
+          attrs: { bulletStyle: top.bulletStyle },
+          content: top.items,
+        };
     if (stack.length) {
       const parentItems = stack[stack.length - 1].items;
       parentItems[parentItems.length - 1].content.push(listNode);
@@ -566,10 +616,22 @@ function foldListBlocks(flat: FlatBlock[]): any[] {
     }
     while (stack.length && b.level < stack[stack.length - 1].level) closeTop();
     if (!stack.length || b.level > stack[stack.length - 1].level) {
-      stack.push({ level: b.level, ordered: b.ordered, items: [] });
+      stack.push({
+        level: b.level,
+        ordered: b.ordered,
+        numberFormat: b.numberFormat,
+        bulletStyle: b.bulletStyle,
+        items: [],
+      });
     } else if (stack[stack.length - 1].ordered !== b.ordered) {
       closeTop();
-      stack.push({ level: b.level, ordered: b.ordered, items: [] });
+      stack.push({
+        level: b.level,
+        ordered: b.ordered,
+        numberFormat: b.numberFormat,
+        bulletStyle: b.bulletStyle,
+        items: [],
+      });
     }
     stack[stack.length - 1].items.push({
       type: 'list_item',
@@ -624,8 +686,19 @@ function parseParagraphEl(pEl: Element, ctx: ParseCtx): FlatBlock {
       };
 
   if (numId != null && ilvl != null && !headingLevel) {
-    const ordered = ctx.numbering.get(numId)?.get(ilvl) ?? false;
-    return { kind: 'listItem', level: ilvl, ordered, node };
+    const info = ctx.numbering.get(numId)?.get(ilvl) ?? {
+      ordered: false,
+      numberFormat: 'decimal',
+      bulletStyle: 'disc',
+    };
+    return {
+      kind: 'listItem',
+      level: ilvl,
+      ordered: info.ordered,
+      numberFormat: info.numberFormat,
+      bulletStyle: info.bulletStyle,
+      node,
+    };
   }
   return { kind: 'block', node };
 }
@@ -729,7 +802,7 @@ export async function parseDocxFile(
     : null;
   const numbering = numberingXml
     ? parseNumberingXml(numberingXml)
-    : new Map<string, Map<number, boolean>>();
+    : new Map<string, Map<number, NumberingLevelInfo>>();
 
   const relsXmlStr = await readZipText(zip, 'word/_rels/document.xml.rels');
   const relsXml = relsXmlStr
