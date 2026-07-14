@@ -39,6 +39,8 @@ import {
   CommentRangeStart,
   CommentRangeEnd,
   CommentReference,
+  Math as DocxMath,
+  MathRun,
   type ParagraphChild,
   type ICommentOptions,
   type ITableCellBorders,
@@ -302,6 +304,18 @@ async function buildInlineItems(
         child: new TextRun({ text: '', break: 1 }),
         commentIds: [],
       });
+      continue;
+    }
+
+    if (node.type === 'math_inline') {
+      const latex = (node.attrs?.latex ?? '') as string;
+      if (latex) {
+        items.push({
+          child: new DocxMath({ children: [new MathRun(latex)] }),
+          commentIds: [],
+        });
+      }
+      continue;
     }
   }
 
@@ -538,6 +552,19 @@ async function blockNodeToDocx(
 
     case 'table':
       return [await tableToDocx(node)];
+
+    case 'math_block': {
+      const latex = (node.attrs?.latex ?? '') as string;
+      return latex
+        ? [
+            new Paragraph({
+              ...overrides,
+              alignment: AlignmentType.CENTER,
+              children: [new DocxMath({ children: [new MathRun(latex)] })],
+            }),
+          ]
+        : [];
+    }
 
     default: {
       // §11 扩展点：交给插件的 exportNode() 处理自定义节点（如 callout）

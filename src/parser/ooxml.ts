@@ -382,6 +382,135 @@ function extractPlainText(el: Element): string {
   return parts.join('');
 }
 
+/**
+ * 递归将 OMML 元素转换为 LaTeX 字符串。
+ * 支持：sub/sup/sSub/sSup 下标上标、f 分数、nary 累加/求和、bar 上划线、rad 根号等常用结构。
+ */
+function ommlToLatex(el: Element): string {
+  const tag = el.localName;
+
+  // 文本节点（递归时也会遇到纯文本）
+  if (el.nodeType === 3) return el.textContent ?? '';
+
+  // 普通 OMML 运行
+  if (tag === 'r') {
+    return Array.from(el.children)
+      .map((c) => ommlToLatex(c))
+      .join('');
+  }
+
+  // 纯文本
+  if (tag === 't') return el.textContent ?? '';
+
+  // 下标元素 (subscript) — 通常出现在 sSub 内部
+  if (tag === 'sub') {
+    const sub = child(el, 'sub');
+    if (sub) return `_{${ommlToLatex(sub)}}`;
+    // 无子 sub 时，遍历当前元素的所有子节点作为兜底
+    return `_{${Array.from(el.children).map(ommlToLatex).join('')}}`;
+  }
+
+  // 上标元素 (superscript)
+  if (tag === 'sup') {
+    const sup = child(el, 'sup');
+    if (sup) return `^{${ommlToLatex(sup)}}`;
+    return `^{${Array.from(el.children).map(ommlToLatex).join('')}}`;
+  }
+
+  // 组合下标（base + sub）
+  if (tag === 'sSub') {
+    const e = child(el, 'e');
+    const sub = child(el, 'sub');
+    const base = e ? ommlToLatex(e) : '';
+    const subscript = sub ? ommlToLatex(sub) : '';
+    return `${base}_{${subscript}}`;
+  }
+
+  // 组合上标（base + sup）
+  if (tag === 'sSup') {
+    const e = child(el, 'e');
+    const sup = child(el, 'sup');
+    const base = e ? ommlToLatex(e) : '';
+    const superscript = sup ? ommlToLatex(sup) : '';
+    return `${base}^{${superscript}}`;
+  }
+
+  // 上下标同时
+  if (tag === 'sSubSup') {
+    const e = child(el, 'e');
+    const sub = child(el, 'sub');
+    const sup = child(el, 'sup');
+    const base = e ? ommlToLatex(e) : '';
+    const subscript = sub ? ommlToLatex(sub) : '';
+    const superscript = sup ? ommlToLatex(sup) : '';
+    return `${base}_{${subscript}}^{${superscript}}`;
+  }
+
+  // 分数
+  if (tag === 'f') {
+    const num = child(el, 'num');
+    const den = child(el, 'den');
+    const numerator = num ? ommlToLatex(num) : '';
+    const denominator = den ? ommlToLatex(den) : '';
+    return `\\frac{${numerator}}{${denominator}}`;
+  }
+
+  // 上划线
+  if (tag === 'bar') {
+    const e = child(el, 'e');
+    return `\\overline{${e ? ommlToLatex(e) : ''}}`;
+  }
+
+  // 根号
+  if (tag === 'rad') {
+    const deg = child(el, 'deg');
+    const e = child(el, 'e');
+    const degree = deg ? ommlToLatex(deg) : '';
+    const radicand = e ? ommlToLatex(e) : '';
+    if (degree && degree !== '2') {
+      return `\\sqrt[${degree}]{${radicand}}`;
+    }
+    return `\\sqrt{${radicand}}`;
+  }
+
+  // 极限
+  if (tag === 'lim') {
+    const limEl = child(el, 'lim');
+    const e = child(el, 'e');
+    const limit = limEl ? ommlToLatex(limEl) : '';
+    const expr = e ? ommlToLatex(e) : '';
+    return `\\lim_{${limit}}{${expr}}`;
+  }
+
+  // n-ary 运算符（∑ ∑ ∏ ∫ 等）
+  if (tag === 'nary') {
+    const sub = child(el, 'sub');
+    const sup = child(el, 'sup');
+    const e = child(el, 'e');
+    const limLow = sub ? ommlToLatex(sub) : '';
+    const limUpp = sup ? ommlToLatex(sup) : '';
+    const body = e ? ommlToLatex(e) : '';
+    // 通常 nary 包含一个 char 元素表示运算符，但我们直接拼接
+    return `${body}_{${limLow}}^{${limUpp}}`;
+  }
+
+  // 括号/包围
+  if (tag === 'd') {
+    // delimiter wrapper, just extract inner
+    const e = child(el, 'e');
+    return e ? ommlToLatex(e) : '';
+  }
+
+  // 其他容器逐个处理子元素
+  const children = Array.from(el.children);
+  if (children.length > 0) {
+    return children.map((c) => ommlToLatex(c)).join('');
+  }
+
+  // 兜底：返回文本内容
+  return el.textContent ?? '';
+}
+
 function parseCommentsXml(doc: Document): DocxComment[] {
   const out: DocxComment[] = [];
   for (const el of Array.from(doc.getElementsByTagNameNS(W, 'comment'))) {
@@ -566,6 +695,21 @@ function parseInlineContent(
         case 'smartTag':
           walk(node);
           break;
+        case 'oMath': {
+          const latex = ommlToLatex(node);
+          if (latex) {
+            out.push({ type: 'math_inline', attrs: { latex } });
+          }
+          break;
+        }
+        case 'oMathPara': {
+          const oMath = child(node, 'oMath');
+          const latex = oMath ? ommlToLatex(oMath) : '';
+          if (latex) {
+            out.push({ type: 'math_block', attrs: { latex } });
+          }
+          break;
+        }
         default:
           break;
       }

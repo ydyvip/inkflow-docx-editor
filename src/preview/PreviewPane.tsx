@@ -2,6 +2,7 @@ import { createSignal, createEffect, onCleanup, Show } from 'solid-js';
 import { EditorState, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { docSchema } from '../schema';
+import { pluginRegistry } from '../plugins/registry';
 import {
   highlightPluginKey,
   highlightPlugin,
@@ -51,6 +52,7 @@ export function PreviewPane(props: PreviewPaneProps) {
     view = new EditorView(hostEl, {
       state,
       editable: () => false,
+      nodeViews: pluginRegistry.nodeViews(docSchema),
       dispatchTransaction(tr) {
         if (!view) return;
         view.updateState(view.state.apply(tr));

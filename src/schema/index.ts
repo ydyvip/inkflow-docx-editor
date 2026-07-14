@@ -30,9 +30,11 @@ import { addListNodes } from 'prosemirror-schema-list';
 import { tableNodes } from 'prosemirror-tables';
 import { pluginRegistry } from '../plugins/registry';
 import { calloutPlugin } from '../plugins/calloutPlugin';
+import { mathPlugin } from '../plugins/mathPlugin';
 
 // 注册内置插件（应用启动时一次性完成，早于 schema 构建）
 pluginRegistry.register(calloutPlugin);
+pluginRegistry.register(mathPlugin);
 
 export interface CellBorder {
   style: 'none' | 'single' | 'dashed' | 'double';

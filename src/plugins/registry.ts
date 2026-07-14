@@ -18,6 +18,7 @@
 import type { NodeSpec, MarkSpec, Schema } from 'prosemirror-model';
 import type { Plugin } from 'prosemirror-state';
 import type { InputRule } from 'prosemirror-inputrules';
+import type { NodeViewConstructor } from 'prosemirror-view';
 
 export interface ToolbarItem {
   id: string;
@@ -33,6 +34,8 @@ export interface DocxPlugin {
   nodes?: Record<string, NodeSpec>;
   /** Mark plugin */
   marks?: Record<string, MarkSpec>;
+  /** NodeView 工厂（将 schema 节点映射到自定义 DOM 渲染 / 交互） */
+  nodeViews?: (schema: Schema) => Record<string, NodeViewConstructor>;
   /** Input rule 工厂（需要 schema 才能创建，故为函数） */
   inputRules?: (schema: Schema) => InputRule[];
   /** Keymap 工厂 */
@@ -72,6 +75,14 @@ class PluginRegistry {
       (acc, p) => ({ ...acc, ...(p.marks ?? {}) }),
       {}
     );
+  }
+
+  nodeViews(schema: Schema): Record<string, NodeViewConstructor> {
+    const views: Record<string, NodeViewConstructor> = {};
+    for (const p of this.plugins) {
+      if (p.nodeViews) Object.assign(views, p.nodeViews(schema));
+    }
+    return views;
   }
 }
 

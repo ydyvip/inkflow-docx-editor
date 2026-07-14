@@ -187,6 +187,7 @@ export function EditorPane(props: EditorPaneProps) {
 
     view = new EditorView(hostEl, {
       state,
+      nodeViews: pluginRegistry.nodeViews(docSchema),
       dispatchTransaction(tr) {
         if (!view) return;
         const newState = view.state.apply(tr);

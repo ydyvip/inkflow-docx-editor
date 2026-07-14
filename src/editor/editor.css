@@ -316,3 +316,51 @@
     background-color: rgba(249, 217, 128, 0.45);
   }
 }
+
+/* ========== Math Formula Styles ========== */
+.editor-page .ProseMirror .math-inline {
+  display: inline-block;
+  vertical-align: middle;
+  cursor: pointer;
+  user-select: none;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.editor-page .ProseMirror .math-block {
+  display: block;
+  text-align: center;
+  margin: 1em 0;
+  cursor: pointer;
+  user-select: none;
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.editor-page .ProseMirror .math-inline:hover,
+.editor-page .ProseMirror .math-block:hover {
+  outline: 1px dashed var(--accent-soft);
+  outline-offset: 2px;
+}
+
+/* 公式编辑 textarea */
+.editor-page .ProseMirror .math-editor textarea {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  padding: 6px 8px;
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  outline: none;
+  resize: vertical;
+  background: var(--paper);
+  color: var(--ink-1);
+  line-height: 1.5;
+}
+
+/* 预览模式下的公式样式 */
+.preview-wrap .math-inline,
+.preview-wrap .math-block {
+  pointer-events: none; /* 只读模式下禁用编辑 */
+}
