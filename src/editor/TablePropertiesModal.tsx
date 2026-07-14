@@ -1,5 +1,4 @@
 import { createSignal, For } from 'solid-js';
-import './tableProperties.css';
 
 export interface TablePropertiesValues {
   tableAlign: 'left' | 'center' | 'right';
@@ -18,15 +17,7 @@ interface TablePropertiesModalProps {
 }
 
 /**
- * 表格属性面板（对应 Word 的"表格属性"对话框，做了简化但覆盖核心项）：
- *   - 表格对齐：整张表格在页面里靠左/居中/靠右
- *   - 单元格对齐方向：选中单元格内容的垂直对齐（顶端/居中/底端）
- *   - 文字方向：选中单元格内文字是水平还是垂直排列
- *   - 边框：线型 + 磅值 + 颜色，应用到选中单元格
- *   - 底纹：选中单元格的背景色
- *
- * 表单状态本地维护，点"应用"时把收集到的值一次性交给调用方（EditorPane），
- * 具体落到 ProseMirror 的哪些 command 由调用方决定——这个组件不感知 ProseMirror。
+ * 表格属性面板
  */
 export function TablePropertiesModal(props: TablePropertiesModalProps) {
   const [tableAlign, setTableAlign] = createSignal(props.initial.tableAlign);
@@ -55,23 +46,23 @@ export function TablePropertiesModal(props: TablePropertiesModalProps) {
   };
 
   return (
-    <div class="table-props-backdrop" onClick={props.onClose}>
-      <div class="table-props-modal" onClick={(e) => e.stopPropagation()}>
-        <div class="table-props-header">
+    <div class="fixed inset-0 bg-black/35 flex items-center justify-center z-50" onClick={props.onClose}>
+      <div class="w-[360px] max-w-[calc(100vw-40px)] max-h-[calc(100vh-80px)] overflow-y-auto bg-paper rounded-xl shadow-2xl p-5 pb-4" onClick={(e) => e.stopPropagation()}>
+        <div class="flex items-center justify-between font-display font-semibold text-base text-ink-1 mb-3.5">
           <span>表格属性</span>
           <button
             type="button"
-            class="table-props-close"
+            class="border-0 bg-transparent cursor-pointer text-ink-3 text-sm px-1.5 py-0.5 rounded-md hover:bg-surface-2 hover:text-ink-1"
             onClick={props.onClose}
             title="关闭"
           >
-            ✕
+            关闭
           </button>
         </div>
 
-        <div class="table-props-section">
-          <div class="table-props-label">表格对齐</div>
-          <div class="table-props-radio-row">
+        <div class="mb-3.5">
+          <div class="text-[12.5px] font-semibold text-ink-2 mb-1.5">表格对齐</div>
+          <div class="flex gap-3.5">
             <For
               each={
                 [
@@ -82,7 +73,7 @@ export function TablePropertiesModal(props: TablePropertiesModalProps) {
               }
             >
               {([value, label]) => (
-                <label class="table-props-radio">
+                <label class="flex items-center gap-1.5 text-[13px] text-ink-1 cursor-pointer">
                   <input
                     type="radio"
                     name="tableAlign"
@@ -97,9 +88,9 @@ export function TablePropertiesModal(props: TablePropertiesModalProps) {
           </div>
         </div>
 
-        <div class="table-props-section">
-          <div class="table-props-label">单元格对齐方向（垂直）</div>
-          <div class="table-props-radio-row">
+        <div class="mb-3.5">
+          <div class="text-[12.5px] font-semibold text-ink-2 mb-1.5">单元格对齐方向（垂直）</div>
+          <div class="flex gap-3.5">
             <For
               each={
                 [
@@ -110,7 +101,7 @@ export function TablePropertiesModal(props: TablePropertiesModalProps) {
               }
             >
               {([value, label]) => (
-                <label class="table-props-radio">
+                <label class="flex items-center gap-1.5 text-[13px] text-ink-1 cursor-pointer">
                   <input
                     type="radio"
                     name="cellVAlign"
@@ -125,9 +116,9 @@ export function TablePropertiesModal(props: TablePropertiesModalProps) {
           </div>
         </div>
 
-        <div class="table-props-section">
-          <div class="table-props-label">文字方向</div>
-          <div class="table-props-radio-row">
+        <div class="mb-3.5">
+          <div class="text-[12.5px] font-semibold text-ink-2 mb-1.5">文字方向</div>
+          <div class="flex gap-3.5">
             <For
               each={
                 [
@@ -137,7 +128,7 @@ export function TablePropertiesModal(props: TablePropertiesModalProps) {
               }
             >
               {([value, label]) => (
-                <label class="table-props-radio">
+                <label class="flex items-center gap-1.5 text-[13px] text-ink-1 cursor-pointer">
                   <input
                     type="radio"
                     name="textDirection"
@@ -152,10 +143,11 @@ export function TablePropertiesModal(props: TablePropertiesModalProps) {
           </div>
         </div>
 
-        <div class="table-props-section">
-          <div class="table-props-label">边框（应用到选中单元格）</div>
-          <div class="table-props-row">
+        <div class="mb-3.5">
+          <div class="text-[12.5px] font-semibold text-ink-2 mb-1.5">边框（应用到选中单元格）</div>
+          <div class="flex items-center gap-2">
             <select
+              class="h-[30px] border border-line-strong rounded-md px-1.5 text-[13px] bg-paper hover:border-accent-soft"
               value={borderStyle()}
               onChange={(e) =>
                 setBorderStyle(
@@ -173,16 +165,17 @@ export function TablePropertiesModal(props: TablePropertiesModalProps) {
               min="0.25"
               max="6"
               step="0.25"
-              class="table-props-number"
+              class="w-14 h-[30px] border border-line-strong rounded-md px-1.5 text-[13px]"
               value={borderWidth()}
               onInput={(e) =>
                 setBorderWidth(Number(e.currentTarget.value) || 1)
               }
               title="边框粗细（磅）"
             />
-            <span class="table-props-unit">磅</span>
+            <span class="text-xs text-ink-3">磅</span>
             <input
               type="color"
+              class="w-[30px] h-[30px] p-0 border border-line-strong rounded-md cursor-pointer"
               value={borderColor()}
               onInput={(e) => setBorderColor(e.currentTarget.value)}
               title="边框颜色"
@@ -190,28 +183,29 @@ export function TablePropertiesModal(props: TablePropertiesModalProps) {
           </div>
         </div>
 
-        <div class="table-props-section">
-          <div class="table-props-label">底纹（选中单元格背景色）</div>
-          <div class="table-props-row">
+        <div class="mb-3.5">
+          <div class="text-[12.5px] font-semibold text-ink-2 mb-1.5">底纹（选中单元格背景色）</div>
+          <div class="flex items-center gap-2">
             <input
               type="color"
+              class="w-[30px] h-[30px] p-0 border border-line-strong rounded-md cursor-pointer"
               value={cellBackground()}
               onInput={(e) => setCellBackground(e.currentTarget.value)}
             />
           </div>
         </div>
 
-        <div class="table-props-footer">
+        <div class="flex justify-end gap-2 mt-4 pt-3.5 border-t border-line">
           <button
             type="button"
-            class="table-props-btn table-props-btn-ghost"
+            class="px-4 py-2 rounded-lg text-[13px] font-semibold cursor-pointer border border-line-strong bg-paper text-ink-2 hover:bg-surface-2"
             onClick={props.onClose}
           >
             取消
           </button>
           <button
             type="button"
-            class="table-props-btn table-props-btn-primary"
+            class="px-4 py-2 rounded-lg text-[13px] font-semibold cursor-pointer border border-accent bg-accent text-white hover:bg-accent-ink hover:border-accent-ink"
             onClick={apply}
           >
             应用

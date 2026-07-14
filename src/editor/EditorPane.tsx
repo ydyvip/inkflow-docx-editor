@@ -41,18 +41,12 @@ import {
   HEADING_LEVELS,
   LIST_STYLE_OPTIONS,
 } from './formatOptions';
-import './editor.css';
 
 export interface EditorApi {
-  /** 通过 blockId 高亮一个段落/标题（不移动光标、不滚动）*/
   highlightBlock: (blockId: string) => void;
-  /** 通过 cellId 高亮一个表格单元格 */
   highlightCell: (cellId: string) => void;
-  /** 清除所有高亮 */
   clearHighlights: () => void;
-  /** 滚动到指定 blockId/cellId 并高亮 */
   scrollToBlock: (id: string) => void;
-  /** 当前批注列表（含解析出的 + 编辑器内新增的）*/
   getComments: () => CommentItem[];
 }
 
@@ -64,17 +58,6 @@ interface EditorPaneProps {
   onReady?: (api: EditorApi) => void;
 }
 
-/**
- * Editor 模块
- * 约束：只能操作 ProseMirror JSON；所有变更必须通过 transaction（§6.3）。
- * 本组件本身不持有"业务状态"，每次 transaction 后把最新的
- * doc.toJSON() 上抛给父组件——JSON 才是唯一真相源。
- *
- * 工具栏分三组，对应 Office 的功能划分：
- *   - Row1 结构：正文/标题1-9 选择、列表、引用、插入（链接/图片/表格/插件）、批注、面板开关
- *   - Row2 字体与段落：字体/字号/颜色/高亮/加粗斜体下划线删除线、对齐、缩进、行距
- *   - Row3（条件显示）：光标进入表格时出现的表格上下文工具栏
- */
 export function EditorPane(props: EditorPaneProps) {
   let hostEl: HTMLDivElement | undefined;
   let view: EditorView | undefined;
@@ -117,9 +100,6 @@ export function EditorPane(props: EditorPaneProps) {
 
   const jumpToComment = (commentId: number) => {
     if (!view || !hostEl) return;
-    // 找到所有带有该批注 id 的文字节点，取其最小/最大位置 —— 即批注覆盖的精确区间
-    // （批注创建时——无论是从 DOCX 解析出来的还是编辑器里新增的——都是加在一段连续文字上，
-    // 因此用 min(from)/max(to) 就能还原出完整、连续的批注范围）
     let from: number | null = null;
     let to: number | null = null;
     view.state.doc.descendants((node, pos) => {
@@ -208,11 +188,8 @@ export function EditorPane(props: EditorPaneProps) {
     };
     props.onReady?.(api);
     props.onCommentsChange?.(comments());
-    // 便于外部（宿主页面 / 控制台 / e2e 测试）直接调用高亮接口
     (window as any).inkflowEditor = api;
 
-    // 初次挂载时没有任何 transaction 触发，version 信号不会自动变化；
-    // 手动 bump 一次，让依赖 version() 的目录树/工具栏状态在 view 就绪后重新计算
     setVersion((n) => n + 1);
   });
 
@@ -245,8 +222,6 @@ export function EditorPane(props: EditorPaneProps) {
     version();
     return view ? computeOutline(view.state.doc) : [];
   };
-
-  // ---- 段落/字体控件的"当前值"读取（驱动下拉框/颜色选择器回显）----
 
   const currentAlign = () => {
     version();
@@ -325,8 +300,6 @@ export function EditorPane(props: EditorPaneProps) {
     version();
     return view ? markActive(view.state, docSchema.marks.link) : false;
   };
-
-  // ---- 命令绑定 ----
 
   const toolbar = buildToolbar(docSchema);
   const tableToolbar = buildTableToolbar();
@@ -408,7 +381,7 @@ export function EditorPane(props: EditorPaneProps) {
   const Btn = (def: BtnDef) => (
     <button
       type="button"
-      class={`toolbar-btn${def.active?.() ? ' is-active' : ''}`}
+      class={`border border-transparent bg-transparent text-ink-2 font-inherit text-[13px] font-semibold px-2.5 py-1.5 rounded-md cursor-pointer leading-none transition-all whitespace-nowrap hover:bg-surface-2 hover:text-ink-1 focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 ${def.active?.() ? 'bg-accent-wash text-accent-ink border-accent-soft' : ''}`}
       onMouseDown={(e) => {
         e.preventDefault();
         def.onClick();
@@ -432,11 +405,11 @@ export function EditorPane(props: EditorPaneProps) {
   );
 
   return (
-    <div class="editor-shell">
-      {/* Row 1：结构 —— 标题级别 / 列表 / 插入 / 批注 / 面板开关 */}
-      <div class="toolbar" role="toolbar" aria-label="结构工具栏">
+    <div class="flex flex-col h-full min-h-0">
+      {/* Row 1 */}
+      <div class="flex items-center gap-1 flex-wrap px-3.5 py-2.5 bg-surface-1 border-b border-line sticky top-0 z-[5]" role="toolbar" aria-label="结构工具栏">
         <select
-          class="toolbar-select toolbar-select-heading"
+          class="h-[30px] border border-line-strong bg-paper text-ink-1 text-[13px] rounded-md px-1.5 cursor-pointer max-w-[100px] font-semibold hover:border-accent-soft"
           value={currentHeadingValue()}
           onChange={(e) => onHeadingSelect(e.currentTarget.value)}
           title="段落样式"
@@ -446,9 +419,9 @@ export function EditorPane(props: EditorPaneProps) {
             {(level) => <option value={`h${level}`}>标题 {level}</option>}
           </For>
         </select>
-        <span class="toolbar-divider" />
+        <span class="w-px h-5 bg-line mx-1" />
         <select
-          class="toolbar-select"
+          class="h-[30px] border border-line-strong bg-paper text-ink-1 text-[13px] rounded-md px-1.5 cursor-pointer max-w-[130px] hover:border-accent-soft"
           value={currentListValue()}
           onChange={(e) => onListStyleChange(e.currentTarget.value)}
           title="项目符号与编号"
@@ -457,62 +430,27 @@ export function EditorPane(props: EditorPaneProps) {
             {(opt) => <option value={opt.value}>{opt.label}</option>}
           </For>
         </select>
-        <Btn
-          id="quote"
-          label="❝ 引用"
-          onClick={() => runCommand(toolbar.blockquote)}
-        />
-        <span class="toolbar-divider" />
-        <Btn
-          id="link"
-          label="🔗 链接"
-          onClick={() => runCommand(toolbar.link)}
-          active={isLinkActive}
-          title="插入/编辑/移除链接"
-        />
-        <Btn
-          id="image"
-          label="🖼 图片"
-          onClick={() => runCommand(toolbar.image)}
-        />
-        <Btn
-          id="table"
-          label="▦ 表格"
-          onClick={() => runCommand(toolbar.table)}
-        />
+        <Btn id="quote" label="引用" onClick={() => runCommand(toolbar.blockquote)} />
+        <span class="w-px h-5 bg-line mx-1" />
+        <Btn id="link" label="链接" onClick={() => runCommand(toolbar.link)} active={isLinkActive} title="插入/编辑/移除链接" />
+        <Btn id="image" label="图片" onClick={() => runCommand(toolbar.image)} />
+        <Btn id="table" label="表格" onClick={() => runCommand(toolbar.table)} />
         <For each={pluginButtons}>{(def) => <Btn {...def} />}</For>
-        <span class="toolbar-divider" />
-        <Btn
-          id="add-comment"
-          label="✍ 批注"
-          onClick={addCommentOnSelection}
-          title="为选中文字添加批注"
-        />
-        <span class="toolbar-spacer" />
-        <Btn
-          id="toggle-outline"
-          label="🗂 目录"
-          onClick={() => setShowOutline((v) => !v)}
-          active={() => showOutline()}
-          title="显示/隐藏文档目录"
-        />
-        <Btn
-          id="toggle-comments"
-          label="💬 批注列表"
-          onClick={() => setShowComments((v) => !v)}
-          active={() => showComments()}
-          title="显示/隐藏批注面板"
-        />
+        <span class="w-px h-5 bg-line mx-1" />
+        <Btn id="add-comment" label="批注" onClick={addCommentOnSelection} title="为选中文字添加批注" />
+        <span class="flex-1" />
+        <Btn id="toggle-outline" label="目录" onClick={() => setShowOutline((v) => !v)} active={() => showOutline()} title="显示/隐藏文档目录" />
+        <Btn id="toggle-comments" label="批注列表" onClick={() => setShowComments((v) => !v)} active={() => showComments()} title="显示/隐藏批注面板" />
       </div>
 
-      {/* Row 2：字体 & 段落格式 —— 尽量贴近 Office「开始」选项卡 */}
+      {/* Row 2 */}
       <div
-        class="toolbar toolbar-format"
+        class="flex items-center gap-1 flex-wrap px-3.5 py-2.5 bg-paper border-b border-line sticky top-0 z-[5]"
         role="toolbar"
         aria-label="字体与段落工具栏"
       >
         <select
-          class="toolbar-select"
+          class="h-[30px] border border-line-strong bg-paper text-ink-1 text-[13px] rounded-md px-1.5 cursor-pointer max-w-[130px] hover:border-accent-soft"
           value={currentFontFamily()}
           onChange={(e) => onFontFamilyChange(e.currentTarget.value)}
           title="字体"
@@ -522,7 +460,7 @@ export function EditorPane(props: EditorPaneProps) {
           </For>
         </select>
         <select
-          class="toolbar-select toolbar-select-narrow"
+          class="h-[30px] border border-line-strong bg-paper text-ink-1 text-[13px] rounded-md px-1.5 cursor-pointer max-w-[78px] hover:border-accent-soft"
           value={currentFontSizePt()}
           onChange={(e) => onFontSizeChange(e.currentTarget.value)}
           title="字号"
@@ -532,51 +470,22 @@ export function EditorPane(props: EditorPaneProps) {
             {(pt) => <option value={pt}>{pt}</option>}
           </For>
         </select>
-        <Btn
-          id="bold"
-          label="B"
-          onClick={() => runCommand(toolbar.bold)}
-          active={() => isMarkActive(docSchema.marks.strong)}
-          title="加粗"
-        />
-        <Btn
-          id="italic"
-          label="I"
-          onClick={() => runCommand(toolbar.italic)}
-          active={() => isMarkActive(docSchema.marks.em)}
-          title="斜体"
-        />
-        <Btn
-          id="underline"
-          label="U"
-          onClick={() => runCommand(toolbar.underline)}
-          active={() => isMarkActive(docSchema.marks.underline)}
-          title="下划线"
-        />
-        <Btn
-          id="strike"
-          label="S"
-          onClick={() => runCommand(toolbar.strike)}
-          active={() => isMarkActive(docSchema.marks.strike)}
-          title="删除线"
-        />
-        <Btn
-          id="code"
-          label="</>"
-          onClick={() => runCommand(toolbar.code)}
-          active={() => isMarkActive(docSchema.marks.code)}
-          title="行内代码"
-        />
-        <label class="toolbar-color" title="文字颜色">
+        <Btn id="bold" label="B" onClick={() => runCommand(toolbar.bold)} active={() => isMarkActive(docSchema.marks.strong)} title="加粗" />
+        <Btn id="italic" label="I" onClick={() => runCommand(toolbar.italic)} active={() => isMarkActive(docSchema.marks.em)} title="斜体" />
+        <Btn id="underline" label="U" onClick={() => runCommand(toolbar.underline)} active={() => isMarkActive(docSchema.marks.underline)} title="下划线" />
+        <Btn id="strike" label="S" onClick={() => runCommand(toolbar.strike)} active={() => isMarkActive(docSchema.marks.strike)} title="删除线" />
+        <Btn id="code" label="&lt;/&gt;" onClick={() => runCommand(toolbar.code)} active={() => isMarkActive(docSchema.marks.code)} title="行内代码" />
+        <label class="flex items-center gap-1 text-xs font-bold text-ink-2 cursor-pointer px-1" title="文字颜色">
           A
           <input
             type="color"
+            class="w-[22px] h-[22px] p-0 border border-line-strong rounded cursor-pointer bg-transparent"
             value={currentColor()}
             onInput={(e) => onColorChange(e.currentTarget.value)}
           />
         </label>
         <select
-          class="toolbar-select toolbar-select-narrow"
+          class="h-[30px] border border-line-strong bg-paper text-ink-1 text-[13px] rounded-md px-1.5 cursor-pointer max-w-[78px] hover:border-accent-soft"
           value={currentHighlight()}
           onChange={(e) => onHighlightChange(e.currentTarget.value)}
           title="高亮"
@@ -585,50 +494,16 @@ export function EditorPane(props: EditorPaneProps) {
             {(h) => <option value={h.value}>{h.label}</option>}
           </For>
         </select>
-        <span class="toolbar-divider" />
-        <Btn
-          id="align-left"
-          label="≡L"
-          onClick={() => runCommand(toolbar.alignLeft)}
-          active={() => currentAlign() === 'left'}
-          title="左对齐"
-        />
-        <Btn
-          id="align-center"
-          label="≡C"
-          onClick={() => runCommand(toolbar.alignCenter)}
-          active={() => currentAlign() === 'center'}
-          title="居中"
-        />
-        <Btn
-          id="align-right"
-          label="≡R"
-          onClick={() => runCommand(toolbar.alignRight)}
-          active={() => currentAlign() === 'right'}
-          title="右对齐"
-        />
-        <Btn
-          id="align-justify"
-          label="≡J"
-          onClick={() => runCommand(toolbar.alignJustify)}
-          active={() => currentAlign() === 'justify'}
-          title="两端对齐"
-        />
-        <span class="toolbar-divider" />
-        <Btn
-          id="indent-less"
-          label="⇤缩进"
-          onClick={() => runCommand(toolbar.indentLess)}
-          title="减少缩进"
-        />
-        <Btn
-          id="indent-more"
-          label="缩进⇥"
-          onClick={() => runCommand(toolbar.indentMore)}
-          title="增加缩进"
-        />
+        <span class="w-px h-5 bg-line mx-1" />
+        <Btn id="align-left" label="左对齐" onClick={() => runCommand(toolbar.alignLeft)} active={() => currentAlign() === 'left'} title="左对齐" />
+        <Btn id="align-center" label="居中" onClick={() => runCommand(toolbar.alignCenter)} active={() => currentAlign() === 'center'} title="居中" />
+        <Btn id="align-right" label="右对齐" onClick={() => runCommand(toolbar.alignRight)} active={() => currentAlign() === 'right'} title="右对齐" />
+        <Btn id="align-justify" label="两端对齐" onClick={() => runCommand(toolbar.alignJustify)} active={() => currentAlign() === 'justify'} title="两端对齐" />
+        <span class="w-px h-5 bg-line mx-1" />
+        <Btn id="indent-less" label="减少缩进" onClick={() => runCommand(toolbar.indentLess)} title="减少缩进" />
+        <Btn id="indent-more" label="增加缩进" onClick={() => runCommand(toolbar.indentMore)} title="增加缩进" />
         <select
-          class="toolbar-select toolbar-select-narrow"
+          class="h-[30px] border border-line-strong bg-paper text-ink-1 text-[13px] rounded-md px-1.5 cursor-pointer max-w-[78px] hover:border-accent-soft"
           value={currentLineSpacing()}
           onChange={(e) => onLineSpacingChange(e.currentTarget.value)}
           title="行距"
@@ -637,84 +512,36 @@ export function EditorPane(props: EditorPaneProps) {
             {(l) => <option value={l.value}>{l.label}</option>}
           </For>
         </select>
-        <span class="toolbar-divider" />
-        <Btn
-          id="clear-format"
-          label="🧹 清除格式"
-          onClick={() => runCommand(toolbar.clearFormatting)}
-          title="清除字符与段落格式（不影响批注/链接）"
-        />
+        <span class="w-px h-5 bg-line mx-1" />
+        <Btn id="clear-format" label="清除格式" onClick={() => runCommand(toolbar.clearFormatting)} title="清除字符与段落格式（不影响批注/链接）" />
       </div>
 
-      {/* Row 3（条件显示）：光标位于表格内时出现，Office 式表格上下文工具栏 */}
+      {/* Row 3 (table) */}
       <Show when={inTable()}>
         <div
-          class="toolbar toolbar-table"
+          class="flex items-center gap-1 flex-wrap px-3.5 py-2.5 bg-accent-wash border-b border-accent-soft sticky top-0 z-[5]"
           role="toolbar"
           aria-label="表格工具栏"
         >
-          <span class="toolbar-label">表格：</span>
-          <Btn
-            id="row-before"
-            label="↑插入行"
-            onClick={() => runCommand(tableToolbar.addRowBefore)}
-          />
-          <Btn
-            id="row-after"
-            label="↓插入行"
-            onClick={() => runCommand(tableToolbar.addRowAfter)}
-          />
-          <Btn
-            id="col-before"
-            label="←插入列"
-            onClick={() => runCommand(tableToolbar.addColumnBefore)}
-          />
-          <Btn
-            id="col-after"
-            label="→插入列"
-            onClick={() => runCommand(tableToolbar.addColumnAfter)}
-          />
-          <span class="toolbar-divider" />
-          <Btn
-            id="del-row"
-            label="删除行"
-            onClick={() => runCommand(tableToolbar.deleteRow)}
-          />
-          <Btn
-            id="del-col"
-            label="删除列"
-            onClick={() => runCommand(tableToolbar.deleteColumn)}
-          />
-          <Btn
-            id="del-table"
-            label="删除表格"
-            onClick={() => runCommand(tableToolbar.deleteTable)}
-          />
-          <span class="toolbar-divider" />
-          <Btn
-            id="merge"
-            label="合并单元格"
-            onClick={() => runCommand(tableToolbar.mergeCells)}
-          />
-          <Btn
-            id="split"
-            label="拆分单元格"
-            onClick={() => runCommand(tableToolbar.splitCell)}
-          />
-          <Btn
-            id="header-row"
-            label="表头行"
-            onClick={() => runCommand(tableToolbar.toggleHeaderRow)}
-          />
-          <Btn
-            id="header-col"
-            label="表头列"
-            onClick={() => runCommand(tableToolbar.toggleHeaderColumn)}
-          />
-          <label class="toolbar-color" title="单元格底色">
+          <span class="text-xs text-ink-3 whitespace-nowrap mr-0.5">表格：</span>
+          <Btn id="row-before" label="上方插入行" onClick={() => runCommand(tableToolbar.addRowBefore)} />
+          <Btn id="row-after" label="下方插入行" onClick={() => runCommand(tableToolbar.addRowAfter)} />
+          <Btn id="col-before" label="左侧插入列" onClick={() => runCommand(tableToolbar.addColumnBefore)} />
+          <Btn id="col-after" label="右侧插入列" onClick={() => runCommand(tableToolbar.addColumnAfter)} />
+          <span class="w-px h-5 bg-line mx-1" />
+          <Btn id="del-row" label="删除行" onClick={() => runCommand(tableToolbar.deleteRow)} />
+          <Btn id="del-col" label="删除列" onClick={() => runCommand(tableToolbar.deleteColumn)} />
+          <Btn id="del-table" label="删除表格" onClick={() => runCommand(tableToolbar.deleteTable)} />
+          <span class="w-px h-5 bg-line mx-1" />
+          <Btn id="merge" label="合并单元格" onClick={() => runCommand(tableToolbar.mergeCells)} />
+          <Btn id="split" label="拆分单元格" onClick={() => runCommand(tableToolbar.splitCell)} />
+          <Btn id="header-row" label="表头行" onClick={() => runCommand(tableToolbar.toggleHeaderRow)} />
+          <Btn id="header-col" label="表头列" onClick={() => runCommand(tableToolbar.toggleHeaderColumn)} />
+          <label class="flex items-center gap-1 text-xs font-bold text-ink-2 cursor-pointer px-1" title="单元格底色">
             底色
             <input
               type="color"
+              class="w-[22px] h-[22px] p-0 border border-line-strong rounded cursor-pointer bg-transparent"
               value="#ffffff"
               onInput={(e) =>
                 runCommand(
@@ -723,13 +550,8 @@ export function EditorPane(props: EditorPaneProps) {
               }
             />
           </label>
-          <span class="toolbar-divider" />
-          <Btn
-            id="table-props"
-            label="⚙ 表格属性"
-            onClick={() => setShowTableProps(true)}
-            title="表格对齐 / 单元格对齐方向 / 文字方向 / 边框底纹"
-          />
+          <span class="w-px h-5 bg-line mx-1" />
+          <Btn id="table-props" label="表格属性" onClick={() => setShowTableProps(true)} title="表格对齐 / 单元格对齐方向 / 文字方向 / 边框底纹" />
         </div>
       </Show>
 
@@ -741,12 +563,12 @@ export function EditorPane(props: EditorPaneProps) {
         />
       </Show>
 
-      <div class="editor-body">
+      <div class="flex-1 min-h-0 flex overflow-hidden">
         <Show when={showOutline()}>
           <OutlineTree items={outlineItems()} onJump={scrollToBlock} />
         </Show>
-        <div class="editor-page-wrap">
-          <div class="editor-page" ref={hostEl} />
+        <div class="flex-1 min-w-0 overflow-y-auto px-6 pb-24 pt-10 bg-canvas">
+          <div class="max-w-[760px] min-h-[900px] mx-auto bg-paper shadow-[0_1px_2px_rgba(23,26,33,0.06),0_12px_32px_rgba(23,26,33,0.08)] rounded-[3px] px-[76px] py-[72px] border-l-[3px] border-l-accent editor-page" ref={hostEl} />
         </div>
         <Show when={showComments()}>
           <CommentsPanel comments={comments()} onJump={jumpToComment} />

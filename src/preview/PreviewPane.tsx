@@ -14,24 +14,13 @@ import {
   findNodeById,
   scrollPosIntoView,
 } from '../outline/computeOutline';
-import '../editor/editor.css';
-import '../outline/outline.css';
-import './preview.css';
 
 interface PreviewPaneProps {
   docJson: any;
 }
 
 /**
- * Preview 模块 —— Mode 1（推荐）：readonly EditorView
- * 直接用当前 JSON 重新创建一个不可编辑的 EditorView，
- * 保证预览与编辑器使用完全相同的渲染规则（同一份 schema，
- * 因此颜色/字体/字号/对齐等真实 DOCX 样式在预览里天然一致）。
- *
- * 同时也带一份目录树（与编辑器共用 computeOutline），满足
- * "预览也需要显示目录"的要求——只读视图依然可以点击跳转+高亮，
- * 因为 dispatch 程序化 transaction 不受 editable:false 限制
- * （editable 只拦截用户直接在 DOM 里编辑的输入）。
+ * Preview 模块 —— readonly EditorView
  */
 export function PreviewPane(props: PreviewPaneProps) {
   let hostEl: HTMLDivElement | undefined;
@@ -40,7 +29,7 @@ export function PreviewPane(props: PreviewPaneProps) {
   const [showOutline, setShowOutline] = createSignal(true);
 
   createEffect(() => {
-    const json = props.docJson; // 建立对 docJson 的响应式依赖
+    const json = props.docJson;
     if (!hostEl) return;
 
     const doc = docSchema.nodeFromJSON(json);
@@ -84,32 +73,29 @@ export function PreviewPane(props: PreviewPaneProps) {
         mode: 'replace',
       } as HighlightMeta);
     view.dispatch(tr);
-    // 只读视图（editable:false）的 DOM tabIndex 是 -1，focus() 拿不到真实焦点，
-    // 浏览器 DOM 选区也就落不进编辑器容器——所以这里手动滚动，不依赖 PM 内置的
-    // scrollToSelection()（它内部要求"当前选区必须在编辑器 DOM 内"才会生效）。
     scrollPosIntoView(view, hostEl.parentElement ?? hostEl, selPos);
   };
 
   return (
-    <div class="editor-shell">
-      <div class="toolbar" role="toolbar" aria-label="预览工具栏">
+    <div class="flex flex-col h-full min-h-0">
+      <div class="flex items-center gap-1 flex-wrap px-3.5 py-2.5 bg-surface-1 border-b border-line sticky top-0 z-[5]" role="toolbar" aria-label="预览工具栏">
         <button
           type="button"
-          class={`toolbar-btn${showOutline() ? ' is-active' : ''}`}
+          class={`px-2.5 py-1.5 rounded-md text-[13px] font-semibold transition-all border border-transparent hover:bg-surface-2 ${showOutline() ? 'bg-accent-wash text-accent-ink border-accent-soft' : 'text-ink-2'}`}
           onClick={() => setShowOutline((v) => !v)}
           title="显示/隐藏文档目录"
         >
-          🗂 目录
+          目录
         </button>
-        <span class="toolbar-spacer" />
-        <span class="toolbar-label">只读预览 —— 样式来自解析出的原始 DOCX</span>
+        <span class="flex-1" />
+        <span class="text-xs text-ink-3 whitespace-nowrap mr-0.5">只读预览 —— 样式来自解析出的原始 DOCX</span>
       </div>
-      <div class="editor-body">
+      <div class="flex-1 min-h-0 flex overflow-hidden">
         <Show when={showOutline()}>
           <OutlineTree items={outlineItems()} onJump={scrollToBlock} />
         </Show>
-        <div class="editor-page-wrap preview-wrap">
-          <div class="editor-page preview-page" ref={hostEl} />
+        <div class="flex-1 min-w-0 overflow-y-auto px-6 pb-24 pt-10 bg-canvas">
+          <div class="max-w-[760px] min-h-[900px] mx-auto bg-paper shadow-[0_1px_2px_rgba(23,26,33,0.06),0_12px_32px_rgba(23,26,33,0.08)] rounded-[3px] px-[76px] py-[72px] border-l-[3px] border-l-accent editor-page preview-mode" ref={hostEl} />
         </div>
       </div>
     </div>

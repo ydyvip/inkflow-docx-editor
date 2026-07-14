@@ -5,7 +5,6 @@ import { PreviewPane } from './preview/PreviewPane';
 import { exportAndDownloadDocx } from './export/exportDocx';
 import { applyAIPatch } from './utils/applyAIPatch';
 import type { DocxComment } from './parser/ooxml';
-import './App.css';
 
 type Stage = 'upload' | 'edit' | 'preview';
 
@@ -13,7 +12,6 @@ function App() {
   const [docJson, setDocJson] = createSignal<any | null>(null);
   const [fileName, setFileName] = createSignal('未命名文档.docx');
   const [stage, setStage] = createSignal<Stage>('upload');
-  // loadKey 从 1 开始（非 0），配合 <Show keyed> 在每次加载新文档时强制重新挂载 EditorPane
   const [loadKey, setLoadKey] = createSignal(1);
   const [warnings, setWarnings] = createSignal<string[]>([]);
   const [comments, setComments] = createSignal<DocxComment[]>([]);
@@ -80,45 +78,50 @@ function App() {
     }
   };
 
+  const activeDot = 'bg-accent shadow-[0_0_0_3px_var(--color-accent-wash)]';
+  const doneDot = 'bg-accent-soft';
+  const inactiveDot = 'bg-line-strong';
+
+  const pipelineStep = 'flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-mono transition-colors';
+
   return (
-    <div class="app-shell">
-      <header class="app-header">
-        <div class="brand">
-          <span class="brand-mark" aria-hidden>
-            🖋
+    <div class="h-screen flex flex-col bg-canvas">
+      <header class="flex items-center gap-7 px-6 py-3.5 bg-paper border-b border-line">
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <span class="font-display font-semibold text-xl tracking-tight text-ink-1">
+            InkFlow
           </span>
-          <span class="brand-name">InkFlow</span>
         </div>
 
-        <nav class="pipeline" aria-label="处理流程">
+        <nav class="flex items-center gap-2 flex-1 justify-center text-ink-3" aria-label="处理流程">
           <span
-            class={`pipeline-step${hasDoc() ? ' is-done' : stage() === 'upload' ? ' is-active' : ''}`}
+            class={`${pipelineStep} ${hasDoc() ? 'text-ink-2' : stage() === 'upload' ? 'text-accent-ink font-medium' : ''}`}
           >
-            <span class="pipeline-dot" />
+            <span class={`w-1.5 h-1.5 rounded-full transition-all ${hasDoc() ? doneDot : stage() === 'upload' ? activeDot : inactiveDot}`} />
             上传 DOCX
           </span>
-          <span class="pipeline-line" />
+          <span class="w-7 h-px bg-[repeating-linear-gradient(to_right,var(--color-line-strong)_0,var(--color-line-strong)_3px,transparent_3px,transparent_6px)]" />
           <span
-            class={`pipeline-step${stage() !== 'upload' ? ' is-active' : ''}`}
+            class={`${pipelineStep} ${stage() !== 'upload' ? 'text-accent-ink font-medium' : ''}`}
           >
-            <span class="pipeline-dot" />
+            <span class={`w-1.5 h-1.5 rounded-full transition-all ${stage() !== 'upload' ? activeDot : inactiveDot}`} />
             结构化 JSON
           </span>
-          <span class="pipeline-line" />
+          <span class="w-7 h-px bg-[repeating-linear-gradient(to_right,var(--color-line-strong)_0,var(--color-line-strong)_3px,transparent_3px,transparent_6px)]" />
           <span
-            class={`pipeline-step${pulseExport() ? ' is-active is-pulse' : ''}`}
+            class={`${pipelineStep} ${pulseExport() ? 'text-accent-ink font-medium' : ''}`}
           >
-            <span class="pipeline-dot" />
+            <span class={`w-1.5 h-1.5 rounded-full transition-all ${pulseExport() ? `${activeDot} animate-[pipeline-pulse_0.8s_ease-in-out_2]` : inactiveDot}`} />
             导出 DOCX
           </span>
         </nav>
 
-        <div class="header-actions">
-          <div class="tabs" role="tablist">
+        <div class="flex items-center gap-2.5 flex-shrink-0">
+          <div class="flex bg-surface-1 rounded-lg p-0.5 mr-1.5" role="tablist">
             <button
               role="tab"
               aria-selected={stage() === 'upload'}
-              class={`tab-btn${stage() === 'upload' ? ' is-active' : ''}`}
+              class={`px-3.5 py-1.5 rounded-md text-[13px] font-semibold transition-all ${stage() === 'upload' ? 'bg-paper text-ink-1 shadow-sm' : 'text-ink-2 hover:text-ink-1'}`}
               onClick={() => setStage('upload')}
             >
               上传
@@ -126,7 +129,7 @@ function App() {
             <button
               role="tab"
               aria-selected={stage() === 'edit'}
-              class={`tab-btn${stage() === 'edit' ? ' is-active' : ''}`}
+              class={`px-3.5 py-1.5 rounded-md text-[13px] font-semibold transition-all disabled:opacity-45 disabled:cursor-not-allowed ${stage() === 'edit' ? 'bg-paper text-ink-1 shadow-sm' : 'text-ink-2 hover:text-ink-1'}`}
               disabled={!hasDoc()}
               onClick={() => setStage('edit')}
             >
@@ -135,7 +138,7 @@ function App() {
             <button
               role="tab"
               aria-selected={stage() === 'preview'}
-              class={`tab-btn${stage() === 'preview' ? ' is-active' : ''}`}
+              class={`px-3.5 py-1.5 rounded-md text-[13px] font-semibold transition-all disabled:opacity-45 disabled:cursor-not-allowed ${stage() === 'preview' ? 'bg-paper text-ink-1 shadow-sm' : 'text-ink-2 hover:text-ink-1'}`}
               disabled={!hasDoc()}
               onClick={() => setStage('preview')}
             >
@@ -144,16 +147,16 @@ function App() {
           </div>
           <button
             type="button"
-            class="ai-btn"
+            class="px-3.5 py-2 rounded-lg text-[13px] font-semibold border border-line-strong bg-paper text-ink-1 transition-all hover:border-accent-soft hover:bg-accent-wash disabled:opacity-45 disabled:cursor-not-allowed"
             disabled={!hasDoc() || busy() !== ''}
             onClick={handleAIOutline}
             title="AI 扩展接口示例：根据标题自动生成大纲（applyAIPatch）"
           >
-            {busy() === 'ai' ? '生成中…' : '✨ 生成大纲'}
+            {busy() === 'ai' ? '生成中…' : '生成大纲'}
           </button>
           <button
             type="button"
-            class="export-btn"
+            class="px-3.5 py-2 rounded-lg text-[13px] font-semibold border border-accent bg-accent text-white transition-all hover:bg-accent-ink hover:border-accent-ink disabled:opacity-45 disabled:cursor-not-allowed"
             disabled={!hasDoc() || busy() !== ''}
             onClick={handleExport}
           >
@@ -163,20 +166,18 @@ function App() {
       </header>
 
       <Show when={warnings().length > 0 && stage() !== 'upload'}>
-        <div class="warning-bar">
+        <div class="bg-yellow-50 text-yellow-800 text-xs px-6 py-2 border-b border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-200 dark:border-yellow-800/30">
           还原提示（结构优先，样式可能与原文件存在差异）：
           {warnings().slice(0, 2).join('；')}
           {warnings().length > 2 ? ` 等 ${warnings().length} 项` : ''}
         </div>
       </Show>
 
-      <main class="app-main">
+      <main class="flex-1 min-h-0 flex flex-col">
         <Show when={stage() === 'upload'}>
           <UploadPanel onParsed={handleParsed} />
         </Show>
         <Show when={stage() === 'edit' && hasDoc()}>
-          {/* keyed Show：每次加载新文档（上传 / AI 大纲）时强制重新挂载编辑器，
-              对应原方案里"用最新 JSON 重建 EditorState"的语义 */}
           <Show when={loadKey()} keyed>
             {(_key) => (
               <EditorPane
@@ -194,7 +195,9 @@ function App() {
       </main>
 
       <Show when={toast()}>
-        <div class="toast">{toast()}</div>
+        <div class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-ink-1 text-white px-5 py-2.5 rounded-lg text-sm shadow-xl animate-[toast-in_0.2s_ease]">
+          {toast()}
+        </div>
       </Show>
     </div>
   );

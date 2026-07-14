@@ -1,5 +1,4 @@
 import { For, Show } from 'solid-js';
-import './outline.css';
 
 export interface OutlineItem {
   blockId: string;
@@ -16,31 +15,49 @@ interface OutlineTreeProps {
 /**
  * Outline 模块 —— 文档目录树
  * 数据来源：EditorPane 每次 transaction 后重新遍历 doc 收集 heading 节点
- * （level + 文本 + blockId），点击条目通过 blockId 定位到编辑器中的对应位置。
- * 这是"编辑器要能显示 docx 文档的目录树"需求的实现。
+ * 点击条目通过 blockId 定位到编辑器中的对应位置。
  */
 export function OutlineTree(props: OutlineTreeProps) {
+  const levelPadding = (level: number) => {
+    if (level === 1) return 'pl-2';
+    if (level === 2) return 'pl-4';
+    if (level === 3) return 'pl-7';
+    if (level === 4) return 'pl-10';
+    if (level === 5) return 'pl-12';
+    if (level === 6) return 'pl-14';
+    return 'pl-16';
+  };
+
+  const levelStyle = (level: number) => {
+    if (level === 1) return 'font-semibold text-ink-1';
+    if (level === 2) return 'text-ink-2';
+    if (level === 3) return 'text-ink-2 text-xs';
+    if (level === 4) return 'text-ink-3 text-xs';
+    return 'text-ink-3 text-[11px] italic';
+  };
+
   return (
-    <div class="outline-panel">
-      <div class="side-panel-title">文档目录</div>
+    <div class="w-60 flex-shrink-0 border-r border-line bg-surface-1 overflow-y-auto px-2.5 py-3.5">
+      <div class="font-mono text-[11px] tracking-wider uppercase text-ink-3 px-2 pb-2.5">
+        文档目录
+      </div>
       <Show
         when={props.items.length > 0}
         fallback={
-          <div class="side-panel-empty">
+          <div class="text-xs text-ink-3 px-2 py-2 leading-relaxed">
             暂无标题，添加 H1–H3 后会显示在这里
           </div>
         }
       >
-        <ul class="outline-list">
+        <ul class="list-none m-0 p-0">
           <For each={props.items}>
             {(item) => (
-              <li
-                class={`outline-item outline-level-${item.level}${props.activeId === item.blockId ? ' is-active' : ''}`}
-              >
+              <li>
                 <button
                   type="button"
                   onClick={() => props.onJump(item.blockId)}
                   title={item.text}
+                  class={`block w-full text-left bg-transparent border-0 rounded-md py-1.5 px-2 text-[13px] cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis transition-colors hover:bg-surface-2 hover:text-ink-1 ${levelPadding(item.level)} ${levelStyle(item.level)} ${props.activeId === item.blockId ? 'bg-accent-wash text-accent-ink font-semibold' : ''}`}
                 >
                   {item.text || '（空标题）'}
                 </button>
