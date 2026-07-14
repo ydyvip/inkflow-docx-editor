@@ -196,11 +196,14 @@ button {
   background-color: var(--color-accent);
 }
 
-/* 批注锚点 */
+/* 批注锚点：默认只显示下划线标识，hover 时才出现淡绿背景 */
 .editor-page .ProseMirror .docx-comment {
   border-bottom: 2px dotted var(--color-accent);
-  background: rgba(156, 199, 195, 0.18);
   cursor: default;
+}
+
+.editor-page .ProseMirror .docx-comment:hover {
+  background: rgba(156, 199, 195, 0.18);
 }
 
 /* 高亮装饰 */

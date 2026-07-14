@@ -10,12 +10,10 @@ import {
   buildTableToolbar,
   markActive,
   currentBlockAttr,
-  currentDocxStyleAttr,
   currentListInfo,
   currentTableNode,
-  setDocxStyle,
-  setLineSpacing,
   setListStyle,
+  setLineSpacing,
   setTableAlign,
   isInTable,
 } from './commands';
@@ -26,7 +24,7 @@ import {
 } from './TablePropertiesModal';
 import { pluginRegistry } from '../plugins/registry';
 import { highlightPluginKey, type HighlightMeta } from './highlightPlugin';
-import { OutlineTree, type OutlineItem } from '../outline/OutlineTree';
+import { OutlineTree } from '../outline/OutlineTree';
 import {
   computeOutline,
   findNodeById,
@@ -34,13 +32,11 @@ import {
 } from '../outline/computeOutline';
 import { CommentsPanel, type CommentItem } from '../comments/CommentsPanel';
 import {
-  FONT_FAMILIES,
-  FONT_SIZES_PT,
-  LINE_SPACING_OPTIONS,
-  HIGHLIGHT_OPTIONS,
   HEADING_LEVELS,
   LIST_STYLE_OPTIONS,
+  LINE_SPACING_OPTIONS,
 } from './formatOptions';
+import { FloatingToolbar } from './FloatingToolbar';
 
 export interface EditorApi {
   highlightBlock: (blockId: string) => void;
@@ -106,7 +102,7 @@ export function EditorPane(props: EditorPaneProps) {
       if (
         node.isText &&
         node.marks.some(
-          (m) => m.type.name === 'comment' && m.attrs.id === commentId
+          (m) => m.type.name === 'comment' && Number(m.attrs.id) === Number(commentId)
         )
       ) {
         if (from === null || pos < from) from = pos;
@@ -128,13 +124,8 @@ export function EditorPane(props: EditorPaneProps) {
     scrollPosIntoView(view, hostEl.parentElement ?? hostEl, from);
   };
 
-  const addCommentOnSelection = () => {
+  const addCommentOnRange = (from: number, to: number) => {
     if (!view) return;
-    const { from, to, empty } = view.state.selection;
-    if (empty) {
-      window.alert('请先在正文中选中要批注的文字');
-      return;
-    }
     const text = window.prompt('输入批注内容：');
     if (!text) return;
     const existingIds = comments().map((c) => c.id);
@@ -213,12 +204,12 @@ export function EditorPane(props: EditorPaneProps) {
     view.focus();
   };
 
-  const isMarkActive = (markType: any) => {
+  const isLinkActive = () => {
     version();
-    return view ? markActive(view.state, markType) : false;
+    return view ? markActive(view.state, docSchema.marks.link) : false;
   };
 
-  const outlineItems = (): OutlineItem[] => {
+  const outlineItems = () => {
     version();
     return view ? computeOutline(view.state.doc) : [];
   };
@@ -233,47 +224,6 @@ export function EditorPane(props: EditorPaneProps) {
     if (!view) return 'paragraph';
     const node = view.state.selection.$from.parent;
     return node.type.name === 'heading' ? `h${node.attrs.level}` : 'paragraph';
-  };
-
-  const currentFontFamily = () => {
-    version();
-    return view
-      ? (currentDocxStyleAttr(
-          view.state,
-          docSchema.marks.docxStyle,
-          'fontFamily'
-        ) ?? '')
-      : '';
-  };
-
-  const currentFontSizePt = () => {
-    version();
-    if (!view) return '';
-    const half = currentDocxStyleAttr(
-      view.state,
-      docSchema.marks.docxStyle,
-      'sizeHalfPt'
-    );
-    return half ? String(Number(half) / 2) : '';
-  };
-
-  const currentColor = () => {
-    version();
-    return view
-      ? currentDocxStyleAttr(view.state, docSchema.marks.docxStyle, 'color') ||
-          '#1c2321'
-      : '#1c2321';
-  };
-
-  const currentHighlight = () => {
-    version();
-    return view
-      ? (currentDocxStyleAttr(
-          view.state,
-          docSchema.marks.docxStyle,
-          'highlight'
-        ) ?? '')
-      : '';
   };
 
   const currentLineSpacing = () => {
@@ -296,11 +246,6 @@ export function EditorPane(props: EditorPaneProps) {
     return `${info.kind}:${info.style}`;
   };
 
-  const isLinkActive = () => {
-    version();
-    return view ? markActive(view.state, docSchema.marks.link) : false;
-  };
-
   const toolbar = buildToolbar(docSchema);
   const tableToolbar = buildTableToolbar();
 
@@ -308,20 +253,6 @@ export function EditorPane(props: EditorPaneProps) {
     if (value === 'paragraph') runCommand(toolbar.paragraph);
     else runCommand(toolbar.heading(Number(value.slice(1))));
   };
-  const onFontFamilyChange = (value: string) =>
-    runCommand(setDocxStyle(docSchema, { fontFamily: value || null }));
-  const onFontSizeChange = (ptStr: string) => {
-    if (!ptStr) return;
-    runCommand(
-      setDocxStyle(docSchema, { sizeHalfPt: Math.round(Number(ptStr) * 2) })
-    );
-  };
-  const onColorChange = (hex: string) =>
-    runCommand(setDocxStyle(docSchema, { color: hex }));
-  const onHighlightChange = (value: string) =>
-    runCommand(setDocxStyle(docSchema, { highlight: value || null }));
-  const onLineSpacingChange = (value: string) =>
-    runCommand(setLineSpacing(value ? Number(value) : null));
 
   const onListStyleChange = (value: string) => {
     if (value === 'none') {
@@ -330,6 +261,10 @@ export function EditorPane(props: EditorPaneProps) {
     }
     const [kind, style] = value.split(':') as ['bullet' | 'ordered', string];
     runCommand(setListStyle(docSchema, kind, style));
+  };
+
+  const onLineSpacingChange = (value: string) => {
+    runCommand(setLineSpacing(value ? Number(value) : null));
   };
 
   const tablePropsInitial = (): TablePropertiesValues => {
@@ -370,6 +305,59 @@ export function EditorPane(props: EditorPaneProps) {
     runCommand(tableToolbar.setCellBackground(values.cellBackground));
   };
 
+  // ---- 清除格式：保留字体(fontFamily)和字号(sizeHalfPt)，其余格式清除 ----
+  const handleClearFormat = () => {
+    if (!view) return;
+    const { from, to } = view.state.selection;
+    const tr = view.state.tr;
+
+    // 1) 移除非 docxStyle 的字符格式 marks
+    ['strong', 'em', 'underline', 'strike', 'code'].forEach((m) => {
+      const mt = docSchema.marks[m];
+      if (mt) tr.removeMark(from, to, mt);
+    });
+
+    // 2) 对 docxStyle mark：保留字体与字号，移除颜色与高亮
+    const docxStyleMark = docSchema.marks.docxStyle;
+    if (docxStyleMark) {
+      tr.removeMark(from, to, docxStyleMark);
+      const preserved: Record<string, any> = {};
+      view.state.doc.nodesBetween(from, to, (node) => {
+        if (!node.isText) return true;
+        const existing = node.marks.find((m) => m.type === docxStyleMark);
+        if (existing) {
+          if (existing.attrs.fontFamily && !preserved.fontFamily) {
+            preserved.fontFamily = existing.attrs.fontFamily;
+          }
+          if (existing.attrs.sizeHalfPt && !preserved.sizeHalfPt) {
+            preserved.sizeHalfPt = existing.attrs.sizeHalfPt;
+          }
+        }
+        return true;
+      });
+
+      if (Object.keys(preserved).length > 0) {
+        tr.addMark(from, to, docxStyleMark.create(preserved));
+      }
+    }
+
+    // 3) 重置段落级格式（对齐、缩进、行距）
+    view.state.doc.nodesBetween(from, to, (node, pos) => {
+      if ((node.type.isTextblock && node.type.name !== 'heading') || node.type.name === 'heading') {
+        tr.setNodeMarkup(pos, null, {
+          ...node.attrs,
+          align: undefined,
+          indent: undefined,
+          lineSpacing: undefined,
+        });
+      }
+      return true;
+    });
+
+    view.dispatch(tr);
+    view.focus();
+  };
+
   interface BtnDef {
     id: string;
     label: string;
@@ -406,7 +394,7 @@ export function EditorPane(props: EditorPaneProps) {
 
   return (
     <div class="flex flex-col h-full min-h-0">
-      {/* Row 1 */}
+      {/* Row 1：结构 —— 标题级别 / 列表 / 引用 / 插入 / 面板开关 */}
       <div class="flex items-center gap-1 flex-wrap px-3.5 py-2.5 bg-surface-1 border-b border-line sticky top-0 z-[5]" role="toolbar" aria-label="结构工具栏">
         <select
           class="h-[30px] border border-line-strong bg-paper text-ink-1 text-[13px] rounded-md px-1.5 cursor-pointer max-w-[100px] font-semibold hover:border-accent-soft"
@@ -436,65 +424,17 @@ export function EditorPane(props: EditorPaneProps) {
         <Btn id="image" label="图片" onClick={() => runCommand(toolbar.image)} />
         <Btn id="table" label="表格" onClick={() => runCommand(toolbar.table)} />
         <For each={pluginButtons}>{(def) => <Btn {...def} />}</For>
-        <span class="w-px h-5 bg-line mx-1" />
-        <Btn id="add-comment" label="批注" onClick={addCommentOnSelection} title="为选中文字添加批注" />
         <span class="flex-1" />
         <Btn id="toggle-outline" label="目录" onClick={() => setShowOutline((v) => !v)} active={() => showOutline()} title="显示/隐藏文档目录" />
         <Btn id="toggle-comments" label="批注列表" onClick={() => setShowComments((v) => !v)} active={() => showComments()} title="显示/隐藏批注面板" />
       </div>
 
-      {/* Row 2 */}
+      {/* Row 2：段落格式 —— 对齐 / 缩进 / 行距 / 清除格式 */}
       <div
         class="flex items-center gap-1 flex-wrap px-3.5 py-2.5 bg-paper border-b border-line sticky top-0 z-[5]"
         role="toolbar"
-        aria-label="字体与段落工具栏"
+        aria-label="段落工具栏"
       >
-        <select
-          class="h-[30px] border border-line-strong bg-paper text-ink-1 text-[13px] rounded-md px-1.5 cursor-pointer max-w-[130px] hover:border-accent-soft"
-          value={currentFontFamily()}
-          onChange={(e) => onFontFamilyChange(e.currentTarget.value)}
-          title="字体"
-        >
-          <For each={FONT_FAMILIES}>
-            {(f) => <option value={f.value}>{f.label}</option>}
-          </For>
-        </select>
-        <select
-          class="h-[30px] border border-line-strong bg-paper text-ink-1 text-[13px] rounded-md px-1.5 cursor-pointer max-w-[78px] hover:border-accent-soft"
-          value={currentFontSizePt()}
-          onChange={(e) => onFontSizeChange(e.currentTarget.value)}
-          title="字号"
-        >
-          <option value="">字号</option>
-          <For each={FONT_SIZES_PT}>
-            {(pt) => <option value={pt}>{pt}</option>}
-          </For>
-        </select>
-        <Btn id="bold" label="B" onClick={() => runCommand(toolbar.bold)} active={() => isMarkActive(docSchema.marks.strong)} title="加粗" />
-        <Btn id="italic" label="I" onClick={() => runCommand(toolbar.italic)} active={() => isMarkActive(docSchema.marks.em)} title="斜体" />
-        <Btn id="underline" label="U" onClick={() => runCommand(toolbar.underline)} active={() => isMarkActive(docSchema.marks.underline)} title="下划线" />
-        <Btn id="strike" label="S" onClick={() => runCommand(toolbar.strike)} active={() => isMarkActive(docSchema.marks.strike)} title="删除线" />
-        <Btn id="code" label="&lt;/&gt;" onClick={() => runCommand(toolbar.code)} active={() => isMarkActive(docSchema.marks.code)} title="行内代码" />
-        <label class="flex items-center gap-1 text-xs font-bold text-ink-2 cursor-pointer px-1" title="文字颜色">
-          A
-          <input
-            type="color"
-            class="w-[22px] h-[22px] p-0 border border-line-strong rounded cursor-pointer bg-transparent"
-            value={currentColor()}
-            onInput={(e) => onColorChange(e.currentTarget.value)}
-          />
-        </label>
-        <select
-          class="h-[30px] border border-line-strong bg-paper text-ink-1 text-[13px] rounded-md px-1.5 cursor-pointer max-w-[78px] hover:border-accent-soft"
-          value={currentHighlight()}
-          onChange={(e) => onHighlightChange(e.currentTarget.value)}
-          title="高亮"
-        >
-          <For each={HIGHLIGHT_OPTIONS}>
-            {(h) => <option value={h.value}>{h.label}</option>}
-          </For>
-        </select>
-        <span class="w-px h-5 bg-line mx-1" />
         <Btn id="align-left" label="左对齐" onClick={() => runCommand(toolbar.alignLeft)} active={() => currentAlign() === 'left'} title="左对齐" />
         <Btn id="align-center" label="居中" onClick={() => runCommand(toolbar.alignCenter)} active={() => currentAlign() === 'center'} title="居中" />
         <Btn id="align-right" label="右对齐" onClick={() => runCommand(toolbar.alignRight)} active={() => currentAlign() === 'right'} title="右对齐" />
@@ -513,10 +453,10 @@ export function EditorPane(props: EditorPaneProps) {
           </For>
         </select>
         <span class="w-px h-5 bg-line mx-1" />
-        <Btn id="clear-format" label="清除格式" onClick={() => runCommand(toolbar.clearFormatting)} title="清除字符与段落格式（不影响批注/链接）" />
+        <Btn id="clear-format" label="清除格式" onClick={handleClearFormat} title="清除字符与段落格式（不影响批注/链接）" />
       </div>
 
-      {/* Row 3 (table) */}
+      {/* Row 3（条件显示）：表格上下文工具栏 */}
       <Show when={inTable()}>
         <div
           class="flex items-center gap-1 flex-wrap px-3.5 py-2.5 bg-accent-wash border-b border-accent-soft sticky top-0 z-[5]"
@@ -563,6 +503,13 @@ export function EditorPane(props: EditorPaneProps) {
         />
       </Show>
 
+      <FloatingToolbar
+        view={() => view}
+        schema={() => docSchema}
+        onAddComment={addCommentOnRange}
+        showFontControls={true}
+      />
+
       <div class="flex-1 min-h-0 flex overflow-hidden">
         <Show when={showOutline()}>
           <OutlineTree items={outlineItems()} onJump={scrollToBlock} />
@@ -571,7 +518,59 @@ export function EditorPane(props: EditorPaneProps) {
           <div class="max-w-[760px] min-h-[900px] mx-auto bg-paper shadow-[0_1px_2px_rgba(23,26,33,0.06),0_12px_32px_rgba(23,26,33,0.08)] rounded-[3px] px-[76px] py-[72px] border-l-[3px] border-l-accent editor-page" ref={hostEl} />
         </div>
         <Show when={showComments()}>
-          <CommentsPanel comments={comments()} onJump={jumpToComment} />
+          <CommentsPanel
+            comments={comments()}
+            onJump={jumpToComment}
+            onUpdate={(id, text) => {
+              const updated = comments().map((c) =>
+                c.id === id ? { ...c, text } : c
+              );
+              setComments(updated);
+              props.onCommentsChange?.(updated);
+            }}
+            onDelete={(id) => {
+              if (!view) return;
+
+              // 1) 更新批注列表状态
+              const updated = comments().filter((c) => c.id !== id);
+              setComments(updated);
+              props.onCommentsChange?.(updated);
+
+              // 2) 从正文中移除该 id 对应的所有 comment mark（即取消高亮）
+              const commentMarkType = docSchema.marks.comment;
+              if (!commentMarkType) return;
+
+              const tr = view.state.tr;
+              const ranges: Array<{ from: number; to: number }> = [];
+
+              view.state.doc.descendants((node, pos) => {
+                if (!node.isText) return true;
+                node.marks.forEach((m) => {
+                  if (
+                    m.type === commentMarkType &&
+                    Number(m.attrs.id) === Number(id)
+                  ) {
+                    ranges.push({ from: pos, to: pos + node.nodeSize });
+                  }
+                });
+                return true;
+              });
+
+              for (const r of ranges) {
+                tr.removeMark(r.from, r.to, commentMarkType);
+              }
+
+              if (tr.docChanged) {
+                view.dispatch(tr);
+                // 同时清除因点击批注而产生的精确选区高亮
+                view.dispatch(
+                  view.state.tr.setMeta(highlightPluginKey, {
+                    mode: 'clear-ranges',
+                  } as HighlightMeta)
+                );
+              }
+            }}
+          />
         </Show>
       </div>
     </div>

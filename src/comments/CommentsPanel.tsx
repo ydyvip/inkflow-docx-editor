@@ -10,6 +10,8 @@ export interface CommentItem {
 interface CommentsPanelProps {
   comments: CommentItem[];
   onJump: (commentId: number) => void;
+  onUpdate?: (id: number, text: string) => void;
+  onDelete?: (id: number) => void;
 }
 
 function formatDate(d: string | null): string {
@@ -30,6 +32,9 @@ export function CommentsPanel(props: CommentsPanelProps) {
   let listEl: HTMLUListElement | undefined;
   let prevCount = props.comments.length;
   const [flashId, setFlashId] = createSignal<number | null>(null);
+  const [activeMenuId, setActiveMenuId] = createSignal<number | null>(null);
+  const [editingId, setEditingId] = createSignal<number | null>(null);
+  const [editText, setEditText] = createSignal('');
 
   createEffect(() => {
     const list = props.comments;
@@ -50,6 +55,31 @@ export function CommentsPanel(props: CommentsPanelProps) {
     prevCount = list.length;
   });
 
+  const startEdit = (c: CommentItem, e: MouseEvent) => {
+    e.stopPropagation();
+    setActiveMenuId(null);
+    setEditText(c.text);
+    setEditingId(c.id);
+  };
+
+  const saveEdit = (id: number) => {
+    props.onUpdate?.(id, editText());
+    setEditingId(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText('');
+  };
+
+  const handleDelete = (id: number, e: MouseEvent) => {
+    e.stopPropagation();
+    setActiveMenuId(null);
+    if (window.confirm('确定要删除这条批注吗？')) {
+      props.onDelete?.(id);
+    }
+  };
+
   return (
     <div class="w-60 flex-shrink-0 border-l border-line bg-surface-1 overflow-y-auto px-2.5 py-3.5">
       <div class="font-mono text-[11px] tracking-wider uppercase text-ink-3 px-2 pb-2.5">
@@ -67,14 +97,78 @@ export function CommentsPanel(props: CommentsPanelProps) {
           <For each={props.comments}>
             {(c) => (
               <li
-                class={`bg-paper border border-line rounded-lg p-2.5 px-3 cursor-pointer transition-all hover:border-accent-soft hover:shadow-md ${flashId() === c.id ? 'border-accent animate-[comment-flash_1.6s_ease-out_1]' : ''}`}
+                class={`bg-paper border border-line rounded-lg p-2.5 px-3 cursor-pointer transition-all hover:border-accent-soft hover:shadow-md relative ${flashId() === c.id ? 'border-accent animate-[comment-flash_1.6s_ease-out_1]' : ''}`}
                 onClick={() => props.onJump(c.id)}
               >
-                <div class="flex justify-between items-baseline mb-1">
-                  <span class="text-xs font-semibold text-ink-1">{c.author}</span>
-                  <span class="font-mono text-[10.5px] text-ink-3">{formatDate(c.date)}</span>
+                <div class="flex justify-between items-start mb-1">
+                  <span class="text-xs font-semibold text-ink-1 pt-0.5">{c.author}</span>
+                  <div class="relative">
+                    <button
+                      type="button"
+                      class="text-ink-3 hover:text-ink-1 text-xs px-1 py-0.5 rounded hover:bg-surface-2 transition-all"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveMenuId(activeMenuId() === c.id ? null : c.id);
+                      }}
+                      title="更多"
+                    >
+                      ···
+                    </button>
+                    <Show when={activeMenuId() === c.id}>
+                      <div class="absolute right-0 top-6 z-10 bg-paper border border-line rounded-lg shadow-lg py-1 min-w-[72px]">
+                        <button
+                          type="button"
+                          class="block w-full text-left px-3 py-1.5 text-xs text-ink-2 hover:bg-accent-wash hover:text-accent-ink transition-all"
+                          onClick={(e) => startEdit(c, e as unknown as MouseEvent)}
+                        >
+                          编辑
+                        </button>
+                        <button
+                          type="button"
+                          class="block w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-red-50 transition-all"
+                          onClick={(e) => handleDelete(c.id, e as unknown as MouseEvent)}
+                        >
+                          删除
+                        </button>
+                      </div>
+                    </Show>
+                  </div>
                 </div>
-                <div class="text-xs text-ink-2 leading-relaxed">{c.text}</div>
+                <div class="font-mono text-[10.5px] text-ink-3 mb-1">
+                  {formatDate(c.date)}
+                </div>
+                <Show
+                  when={editingId() === c.id}
+                  fallback={<div class="text-xs text-ink-2 leading-relaxed">{c.text}</div>}
+                >
+                  <textarea
+                    class="w-full min-h-[60px] border border-line-strong rounded-md p-1.5 text-xs text-ink-1 bg-paper resize-y focus:border-accent focus:outline-none"
+                    value={editText()}
+                    onInput={(e) => setEditText(e.currentTarget.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter' && e.metaKey) saveEdit(c.id);
+                      if (e.key === 'Escape') cancelEdit();
+                    }}
+                  />
+                  <div class="flex justify-end gap-1.5 mt-1.5">
+                    <button
+                      type="button"
+                      class="px-2 py-1 text-[11px] rounded border border-line-strong bg-paper text-ink-2 hover:bg-surface-2"
+                      onClick={(e) => { e.stopPropagation(); cancelEdit(); }}
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      class="px-2 py-1 text-[11px] rounded border border-accent bg-accent text-white hover:bg-accent-ink"
+                      onClick={(e) => { e.stopPropagation(); saveEdit(c.id); }}
+                    >
+                      保存
+                    </button>
+                  </div>
+                </Show>
               </li>
             )}
           </For>

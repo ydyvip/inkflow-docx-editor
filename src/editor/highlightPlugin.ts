@@ -30,7 +30,7 @@ export interface HighlightRange {
 export interface HighlightMeta {
   ids?: string[]; // 要高亮的 blockId / cellId 集合（并集判断，不区分类型）
   ranges?: HighlightRange[]; // 要高亮的精确文档区间（用于批注等"部分内容"高亮）
-  mode: 'replace' | 'add' | 'clear';
+  mode: 'replace' | 'add' | 'clear' | 'clear-ranges';
 }
 
 interface HighlightState {
@@ -88,6 +88,7 @@ export function highlightPlugin(): Plugin<HighlightState> {
 
         if (!meta) return { ids, ranges };
         if (meta.mode === 'clear') return { ids: new Set(), ranges: [] };
+        if (meta.mode === 'clear-ranges') return { ids, ranges: [] };
         if (meta.mode === 'replace') {
           return { ids: new Set(meta.ids ?? []), ranges: meta.ranges ?? [] };
         }

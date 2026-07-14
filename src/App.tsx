@@ -190,7 +190,7 @@ function App() {
           </Show>
         </Show>
         <Show when={stage() === 'preview' && hasDoc()}>
-          <PreviewPane docJson={docJson()} />
+          <PreviewPane docJson={docJson()} initialComments={comments()} onCommentsChange={setComments} />
         </Show>
       </main>
 
