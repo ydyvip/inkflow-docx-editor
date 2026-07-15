@@ -45,7 +45,6 @@ import {
   type ICommentOptions,
   type ITableCellBorders,
 } from 'docx';
-import { saveAs } from 'file-saver';
 import { pluginRegistry } from '../plugins/registry';
 import {
   docxImageType,
@@ -612,7 +611,7 @@ function buildCommentOptions(comments: DocxComment[]): ICommentOptions[] {
     id: c.id,
     author: c.author,
     date: c.date ? new Date(c.date) : new Date(),
-    children: [new Paragraph(c.text)],
+    children: [new Paragraph({ children: [new TextRun({ text: c.text })] })],
   }));
 }
 
@@ -635,12 +634,15 @@ export async function jsonToDocxBlob(
   return Packer.toBlob(doc);
 }
 
-/** 导出并触发浏览器下载 */
+/**
+ * 导出并触发浏览器下载
+ */
 export async function exportAndDownloadDocx(
   docJson: any,
   filename = 'document.docx',
   comments: DocxComment[] = []
 ): Promise<void> {
+  const { saveAs } = await import('file-saver');
   const blob = await jsonToDocxBlob(docJson, comments);
   saveAs(blob, filename.endsWith('.docx') ? filename : `${filename}.docx`);
 }

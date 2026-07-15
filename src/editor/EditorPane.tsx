@@ -9,11 +9,9 @@ import {
   buildToolbar,
   buildTableToolbar,
   markActive,
-  currentBlockAttr,
   currentListInfo,
   currentTableNode,
   setListStyle,
-  setLineSpacing,
   setTableAlign,
   isInTable,
 } from './commands';
@@ -31,12 +29,9 @@ import {
   scrollPosIntoView,
 } from '../outline/computeOutline';
 import { CommentsPanel, type CommentItem } from '../comments/CommentsPanel';
-import {
-  HEADING_LEVELS,
-  LIST_STYLE_OPTIONS,
-  LINE_SPACING_OPTIONS,
-} from './formatOptions';
+import { LIST_STYLE_OPTIONS } from './formatOptions';
 import { FloatingToolbar } from './FloatingToolbar';
+import { ParagraphSettings } from './ParagraphSettings';
 
 export interface EditorApi {
   highlightBlock: (blockId: string) => void;
@@ -214,25 +209,6 @@ export function EditorPane(props: EditorPaneProps) {
     return view ? computeOutline(view.state.doc) : [];
   };
 
-  const currentAlign = () => {
-    version();
-    return view ? currentBlockAttr(view.state, 'align') || 'left' : 'left';
-  };
-
-  const currentHeadingValue = () => {
-    version();
-    if (!view) return 'paragraph';
-    const node = view.state.selection.$from.parent;
-    return node.type.name === 'heading' ? `h${node.attrs.level}` : 'paragraph';
-  };
-
-  const currentLineSpacing = () => {
-    version();
-    return view
-      ? String(currentBlockAttr(view.state, 'lineSpacing') ?? '')
-      : '';
-  };
-
   const inTable = () => {
     version();
     return view ? isInTable(view.state) : false;
@@ -249,11 +225,6 @@ export function EditorPane(props: EditorPaneProps) {
   const toolbar = buildToolbar(docSchema);
   const tableToolbar = buildTableToolbar();
 
-  const onHeadingSelect = (value: string) => {
-    if (value === 'paragraph') runCommand(toolbar.paragraph);
-    else runCommand(toolbar.heading(Number(value.slice(1))));
-  };
-
   const onListStyleChange = (value: string) => {
     if (value === 'none') {
       runCommand(setListStyle(docSchema, 'none'));
@@ -261,10 +232,6 @@ export function EditorPane(props: EditorPaneProps) {
     }
     const [kind, style] = value.split(':') as ['bullet' | 'ordered', string];
     runCommand(setListStyle(docSchema, kind, style));
-  };
-
-  const onLineSpacingChange = (value: string) => {
-    runCommand(setLineSpacing(value ? Number(value) : null));
   };
 
   const tablePropsInitial = (): TablePropertiesValues => {
@@ -394,20 +361,8 @@ export function EditorPane(props: EditorPaneProps) {
 
   return (
     <div class="flex flex-col h-full min-h-0">
-      {/* Row 1：结构 —— 标题级别 / 列表 / 引用 / 插入 / 面板开关 */}
+      {/* Row 1：结构 —— 列表 / 引用 / 插入 / 面板开关 */}
       <div class="flex items-center gap-1 flex-wrap px-3.5 py-2.5 bg-surface-1 border-b border-line sticky top-0 z-[5]" role="toolbar" aria-label="结构工具栏">
-        <select
-          class="h-[30px] border border-line-strong bg-paper text-ink-1 text-[13px] rounded-md px-1.5 cursor-pointer max-w-[100px] font-semibold hover:border-accent-soft"
-          value={currentHeadingValue()}
-          onChange={(e) => onHeadingSelect(e.currentTarget.value)}
-          title="段落样式"
-        >
-          <option value="paragraph">正文</option>
-          <For each={HEADING_LEVELS}>
-            {(level) => <option value={`h${level}`}>标题 {level}</option>}
-          </For>
-        </select>
-        <span class="w-px h-5 bg-line mx-1" />
         <select
           class="h-[30px] border border-line-strong bg-paper text-ink-1 text-[13px] rounded-md px-1.5 cursor-pointer max-w-[130px] hover:border-accent-soft"
           value={currentListValue()}
@@ -429,34 +384,7 @@ export function EditorPane(props: EditorPaneProps) {
         <Btn id="toggle-comments" label="批注列表" onClick={() => setShowComments((v) => !v)} active={() => showComments()} title="显示/隐藏批注面板" />
       </div>
 
-      {/* Row 2：段落格式 —— 对齐 / 缩进 / 行距 / 清除格式 */}
-      <div
-        class="flex items-center gap-1 flex-wrap px-3.5 py-2.5 bg-paper border-b border-line sticky top-0 z-[5]"
-        role="toolbar"
-        aria-label="段落工具栏"
-      >
-        <Btn id="align-left" label="左对齐" onClick={() => runCommand(toolbar.alignLeft)} active={() => currentAlign() === 'left'} title="左对齐" />
-        <Btn id="align-center" label="居中" onClick={() => runCommand(toolbar.alignCenter)} active={() => currentAlign() === 'center'} title="居中" />
-        <Btn id="align-right" label="右对齐" onClick={() => runCommand(toolbar.alignRight)} active={() => currentAlign() === 'right'} title="右对齐" />
-        <Btn id="align-justify" label="两端对齐" onClick={() => runCommand(toolbar.alignJustify)} active={() => currentAlign() === 'justify'} title="两端对齐" />
-        <span class="w-px h-5 bg-line mx-1" />
-        <Btn id="indent-less" label="减少缩进" onClick={() => runCommand(toolbar.indentLess)} title="减少缩进" />
-        <Btn id="indent-more" label="增加缩进" onClick={() => runCommand(toolbar.indentMore)} title="增加缩进" />
-        <select
-          class="h-[30px] border border-line-strong bg-paper text-ink-1 text-[13px] rounded-md px-1.5 cursor-pointer max-w-[78px] hover:border-accent-soft"
-          value={currentLineSpacing()}
-          onChange={(e) => onLineSpacingChange(e.currentTarget.value)}
-          title="行距"
-        >
-          <For each={LINE_SPACING_OPTIONS}>
-            {(l) => <option value={l.value}>{l.label}</option>}
-          </For>
-        </select>
-        <span class="w-px h-5 bg-line mx-1" />
-        <Btn id="clear-format" label="清除格式" onClick={handleClearFormat} title="清除字符与段落格式（不影响批注/链接）" />
-      </div>
-
-      {/* Row 3（条件显示）：表格上下文工具栏 */}
+      {/* Row 2（条件显示）：表格上下文工具栏 */}
       <Show when={inTable()}>
         <div
           class="flex items-center gap-1 flex-wrap px-3.5 py-2.5 bg-accent-wash border-b border-accent-soft sticky top-0 z-[5]"
@@ -508,7 +436,10 @@ export function EditorPane(props: EditorPaneProps) {
         schema={() => docSchema}
         onAddComment={addCommentOnRange}
         showFontControls={true}
+        onClearFormat={handleClearFormat}
       />
+
+      <ParagraphSettings view={() => view} version={version} />
 
       <div class="flex-1 min-h-0 flex overflow-hidden">
         <Show when={showOutline()}>

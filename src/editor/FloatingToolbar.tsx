@@ -13,6 +13,8 @@ export interface FloatingToolbarProps {
   onAddComment: (from: number, to: number) => void;
   /** 是否显示字体编辑控件（编辑模式=true，预览模式=false） */
   showFontControls?: boolean;
+  /** 编辑模式下提供的清除格式回调 */
+  onClearFormat?: () => void;
 }
 
 /** 当前选中文字内容 */
@@ -405,7 +407,7 @@ export function FloatingToolbar(props: FloatingToolbarProps) {
           <span class="w-px h-5 bg-line mx-0.5" />
         </Show>
 
-        {/* 公共操作：复制 + 批注 */}
+        {/* 公共操作：复制 + 清除格式 + 批注 */}
         <button
           type="button"
           class={`h-7 px-2.5 text-xs font-semibold rounded border transition-all ${copied() ? 'border-accent-soft bg-accent-wash text-accent-ink' : 'border-line-strong bg-paper text-ink-2 hover:bg-accent-wash hover:text-accent-ink hover:border-accent-soft'}`}
@@ -414,6 +416,16 @@ export function FloatingToolbar(props: FloatingToolbarProps) {
         >
           {copied() ? '已复制' : '复制'}
         </button>
+        <Show when={props.onClearFormat}>
+          <button
+            type="button"
+            class="h-7 px-2.5 text-xs font-semibold rounded border border-line-strong bg-paper text-ink-2 hover:bg-accent-wash hover:text-accent-ink hover:border-accent-soft transition-all"
+            onMouseDown={(e) => { e.preventDefault(); props.onClearFormat?.(); }}
+            title="清除字符与段落格式（不影响批注/链接）"
+          >
+            清除格式
+          </button>
+        </Show>
         <button
           type="button"
           class="h-7 px-2.5 text-xs font-semibold rounded border border-accent bg-accent text-white hover:bg-accent-ink hover:border-accent-ink transition-all"
