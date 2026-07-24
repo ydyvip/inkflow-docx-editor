@@ -166,7 +166,7 @@ function App() {
       </header>
 
       <Show when={warnings().length > 0 && stage() !== 'upload'}>
-        <div class="bg-yellow-50 text-yellow-800 text-xs px-6 py-2 border-b border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-200 dark:border-yellow-800/30">
+        <div class="bg-warning/15 text-warning-ink text-xs px-6 py-2 border-b border-warning/40 dark:bg-warning/10 dark:text-warning-ink dark:border-warning/40">
           还原提示（结构优先，样式可能与原文件存在差异）：
           {warnings().slice(0, 2).join('；')}
           {warnings().length > 2 ? ` 等 ${warnings().length} 项` : ''}

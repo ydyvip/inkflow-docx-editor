@@ -52,7 +52,7 @@ export const calloutPlugin: DocxPlugin = {
   toolbar: (schema: Schema) => [
     {
       id: 'callout',
-      label: '💡 提示块',
+      label: '提示块',
       run: (view) => {
         const { state, dispatch } = view;
         const inCallout =

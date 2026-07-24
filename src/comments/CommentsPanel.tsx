@@ -125,7 +125,7 @@ export function CommentsPanel(props: CommentsPanelProps) {
                         </button>
                         <button
                           type="button"
-                          class="block w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-red-50 transition-all"
+                           class="block w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-danger/10 transition-all"
                           onClick={(e) => handleDelete(c.id, e as unknown as MouseEvent)}
                         >
                           删除

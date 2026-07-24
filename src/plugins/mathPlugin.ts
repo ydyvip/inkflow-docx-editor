@@ -310,13 +310,13 @@ export const mathPlugin: DocxPlugin = {
   toolbar: (schema: Schema) => [
     {
       id: 'math-inline',
-      label: '∑ 行内公式',
+      label: '行内公式',
       run: insertMathInline(schema),
       isActive: () => false,
     },
     {
       id: 'math-block',
-      label: '∑ 块级公式',
+      label: '块级公式',
       run: insertMathBlock(schema),
       isActive: () => false,
     },

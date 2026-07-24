@@ -1,52 +1,70 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
-
+/* Fonts use opencode's system-font stacks (see --font-* in @theme below). No webfonts. */
 @import "tailwindcss";
 
 @theme {
-  --color-canvas: #e8ebe7;
-  --color-paper: #fffffe;
-  --color-surface-1: #f4f5f2;
-  --color-surface-2: #eceeea;
+  /* Surfaces — opencode neutral gray (--background-base / -weak / -strong) */
+  --color-canvas: #f8f8f8;
+  --color-paper: #fcfcfc;
+  --color-surface-1: #f3f3f3;
+  --color-surface-2: #f3f3f3;
 
-  --color-ink-1: #1c2321;
-  --color-ink-2: #45514c;
-  --color-ink-3: #7c8781;
+  /* Text — opencode text scale (--text-strong / -base / -weak) */
+  --color-ink-1: #171717;
+  --color-ink-2: #6f6f6f;
+  --color-ink-3: #8f8f8f;
 
-  --color-accent: #2f6f6f;
-  --color-accent-ink: #1f5c5c;
-  --color-accent-soft: #9cc7c3;
-  --color-accent-wash: #e4f0ef;
+  /* Accent / interactive — opencode blue (#034cff) */
+  --color-accent: #034cff;
+  --color-accent-ink: #034cff;
+  --color-accent-soft: #a3c1fd;
+  --color-accent-wash: #e0eaff;
 
-  --color-danger: #b3453a;
+  /* Danger — opencode critical (#fc533a) */
+  --color-danger: #fc533a;
 
-  --color-line: #e2e4de;
-  --color-line-strong: #c7cbc2;
+  /* Warning — opencode warning (#fbdd46 light) */
+  --color-warning: #fbdd46;
+  --color-warning-ink: #6b5300;
 
-  --font-display: 'Fraunces', 'Songti SC', serif;
-  --font-body: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  /* Lines — opencode border rgba (--border-base / -strong-base) */
+  --color-line: rgba(0, 0, 0, 0.162);
+  --color-line-strong: rgba(0, 0, 0, 0.151);
+
+  /* Fonts — opencode system font stacks (no webfonts) */
+  --font-display: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-canvas: #1a1d1b;
-    --color-paper: #242926;
-    --color-surface-1: #2a2f2c;
-    --color-surface-2: #323835;
+    /* Surfaces — opencode neutral gray (dark) */
+    --color-canvas: #101010;
+    --color-paper: #121212;
+    --color-surface-1: #1e1e1e;
+    --color-surface-2: #1e1e1e;
 
-    --color-ink-1: #e6ebe8;
-    --color-ink-2: #a8b2ad;
-    --color-ink-3: #6e7a74;
+    /* Text — opencode text scale (dark) */
+    --color-ink-1: rgba(255, 255, 255, 0.936);
+    --color-ink-2: rgba(255, 255, 255, 0.618);
+    --color-ink-3: rgba(255, 255, 255, 0.422);
 
-    --color-accent: #5daaa6;
-    --color-accent-ink: #7bc4bf;
-    --color-accent-soft: #3d6b68;
-    --color-accent-wash: #1e3534;
+    /* Accent / interactive — opencode blue (dark) */
+    --color-accent: #9dbefe;
+    --color-accent-ink: #9dbefe;
+    --color-accent-soft: #a3c1fd;
+    --color-accent-wash: #091123;
 
-    --color-danger: #d96b60;
+    /* Danger — opencode critical (same both modes) */
+    --color-danger: #fc533a;
 
-    --color-line: #3a4540;
-    --color-line-strong: #4e5a54;
+    /* Warning — opencode warning (dark) */
+    --color-warning: #fcd53a;
+    --color-warning-ink: #fcd53a;
+
+    /* Lines — opencode border rgba (dark) */
+    --color-line: rgba(255, 255, 255, 0.195);
+    --color-line-strong: rgba(255, 255, 255, 0.266);
   }
 }
 
@@ -203,7 +221,7 @@ button {
 }
 
 .editor-page .ProseMirror .docx-comment:hover {
-  background: rgba(156, 199, 195, 0.18);
+  background: rgba(3, 76, 255, 0.18);
 }
 
 /* 高亮装饰 */
