@@ -129,7 +129,9 @@ function withListStyleAttr(
       const domAttrs: Record<string, any> =
         baseArr.length === 3 ? { ...baseArr[1] } : {};
       const styleVal = node.attrs[attrName];
-      if (styleVal && styleVal !== defaultValue) {
+      // 必须始终显式写出 list-style-type，否则 Tailwind 的 Preflight 会
+      // 把列表 marker 重置为 none，导致默认项目符号 / 数字不显示。
+      if (styleVal) {
         domAttrs.style =
           (domAttrs.style ? domAttrs.style + ';' : '') +
           `list-style-type:${styleVal}`;

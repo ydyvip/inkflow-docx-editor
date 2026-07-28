@@ -132,6 +132,8 @@ interface StyleInfo {
   headingLevel: number | null;
   rPr: RunProps;
   align: string | null;
+  /** 段落样式自身携带的编号定义（ Word 多级列表常定义在样式上） */
+  numPr: Element | null;
 }
 
 function extractRunProps(rPrEl: Element | null): RunProps {
@@ -190,6 +192,7 @@ function parseStylesXml(doc: Document): Map<string, StyleInfo> {
       headingLevel: number | null;
       rPr: RunProps;
       align: string | null;
+      numPr: Element | null;
     }
   >();
 
@@ -201,9 +204,9 @@ function parseStylesXml(doc: Document): Map<string, StyleInfo> {
     const name = wAttr(child(styleEl, 'name'), 'val') ?? id;
     const basedOn = wAttr(child(styleEl, 'basedOn'), 'val');
     const headingMatch = /^heading\s*(\d)/i.exec(name);
-    const align = normalizeAlign(
-      wAttr(child(child(styleEl, 'pPr'), 'jc'), 'val')
-    );
+    const stylePPr = child(styleEl, 'pPr');
+    const align = normalizeAlign(wAttr(child(stylePPr, 'jc'), 'val'));
+    const numPr = child(stylePPr, 'numPr');
 
     raw.set(id, {
       name,
@@ -215,6 +218,7 @@ function parseStylesXml(doc: Document): Map<string, StyleInfo> {
           : null,
       rPr: extractRunProps(child(styleEl, 'rPr')),
       align,
+      numPr,
     });
   }
 
@@ -232,6 +236,7 @@ function parseStylesXml(doc: Document): Map<string, StyleInfo> {
         headingLevel: null,
         rPr: {},
         align: null,
+        numPr: null,
       };
       resolved.set(id, fallback);
       return fallback;
@@ -244,6 +249,7 @@ function parseStylesXml(doc: Document): Map<string, StyleInfo> {
         headingLevel: info.headingLevel,
         rPr: info.rPr,
         align: info.align,
+        numPr: info.numPr,
       };
       resolved.set(id, flat);
       return flat;
@@ -256,6 +262,8 @@ function parseStylesXml(doc: Document): Map<string, StyleInfo> {
       headingLevel: info.headingLevel,
       rPr: { ...(base?.rPr ?? {}), ...info.rPr },
       align: info.align ?? base?.align ?? null,
+      // 样式的编号通常直接挂在具体样式上；按继承链兜底取最先出现的 numPr
+      numPr: info.numPr ?? base?.numPr ?? null,
     };
     resolving.delete(id);
     resolved.set(id, merged);
@@ -274,6 +282,7 @@ export interface NumberingLevelInfo {
   ordered: boolean;
   numberFormat: string; // 'decimal' | 'lower-alpha' | 'upper-alpha' | 'lower-roman' | 'upper-roman'
   bulletStyle: string; // 'disc' | 'circle' | 'square'
+  lvlText: string | null; // 原始 w:lvlText（如 "%1." / "%1.%2."），用于标题编号文本
 }
 
 const OOXML_NUMFMT_MAP: Record<string, string> = {
@@ -310,6 +319,7 @@ function parseNumberingXml(
         ordered,
         numberFormat: OOXML_NUMFMT_MAP[fmt] ?? 'decimal',
         bulletStyle: detectBulletStyle(lvlText),
+        lvlText,
       });
     }
     abstractFormats.set(absId, levelMap);
@@ -533,6 +543,8 @@ function parseCommentsXml(doc: Document): DocxComment[] {
 interface ParseCtx {
   styles: Map<string, StyleInfo>;
   numbering: Map<string, Map<number, NumberingLevelInfo>>;
+  /** 标题编号计数器：numId -> 各级别当前值（仅用于生成标题前缀编号） */
+  numberingCounters: Map<string, number[]>;
   rels: Map<string, string>;
   media: Map<string, string>;
   warnings: string[];
@@ -548,6 +560,7 @@ type FlatBlock =
       ordered: boolean;
       numberFormat: string;
       bulletStyle: string;
+      numId: string;
       node: any;
     };
 
@@ -720,6 +733,89 @@ function parseInlineContent(
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// 标题自动编号：维护每份 numId 的计数器并格式化为可读文本
+// ---------------------------------------------------------------------------
+
+function toRoman(num: number): string {
+  if (num <= 0 || num > 3999) return String(num);
+  const values = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1];
+  const symbols = [
+    'M',
+    'CM',
+    'D',
+    'CD',
+    'C',
+    'XC',
+    'L',
+    'XL',
+    'X',
+    'IX',
+    'V',
+    'IV',
+    'I',
+  ];
+  let out = '';
+  for (let i = 0; i < values.length; i++) {
+    while (num >= values[i]) {
+      num -= values[i];
+      out += symbols[i];
+    }
+  }
+  return out;
+}
+
+function formatListCounter(format: string, value: number): string {
+  const n = value > 0 ? value : 1;
+  switch (format) {
+    case 'lower-alpha':
+      return String.fromCharCode(97 + ((n - 1) % 26));
+    case 'upper-alpha':
+      return String.fromCharCode(65 + ((n - 1) % 26));
+    case 'lower-roman':
+      return toRoman(n).toLowerCase();
+    case 'upper-roman':
+      return toRoman(n).toUpperCase();
+    case 'decimal':
+    default:
+      return String(n);
+  }
+}
+
+/**
+ * 根据多级列表的 w:lvlText 模板生成标题前缀编号。
+ * 例如 lvlText="%1.%2." 的二级标题会渲染成 "1.2."。
+ * 计数器按文档顺序维护，适合常见的连续标题编号场景；
+ * 复杂重启/继续规则按 "结构优先" 原则做近似处理。
+ */
+function buildHeadingNumberText(
+  ctx: ParseCtx,
+  numId: string,
+  ilvl: number,
+  lvlInfo: NumberingLevelInfo | undefined
+): string | null {
+  if (!lvlInfo || !lvlInfo.ordered) return null;
+
+  let counters = ctx.numberingCounters.get(numId);
+  if (!counters) {
+    counters = [];
+    ctx.numberingCounters.set(numId, counters);
+  }
+  while (counters.length <= ilvl) counters.push(0);
+  counters[ilvl] = (counters[ilvl] ?? 0) + 1;
+  counters.splice(ilvl + 1);
+
+  const text = lvlInfo.lvlText ?? (ilvl === 0 ? '%1.' : '%1.%2.');
+  return text.replace(/%(\d+)/g, (_, nStr) => {
+    const refLevel = Number(nStr) - 1;
+    if (refLevel < 0 || refLevel > ilvl) return `%${nStr}`;
+    const refInfo = ctx.numbering.get(numId)?.get(refLevel);
+    const fmt = refInfo?.numberFormat ?? 'decimal';
+    const val = counters[refLevel] ?? 1;
+    return formatListCounter(fmt, val);
+  });
+}
+
 function foldListBlocks(flat: FlatBlock[]): any[] {
   const out: any[] = [];
   const stack: {
@@ -727,6 +823,7 @@ function foldListBlocks(flat: FlatBlock[]): any[] {
     ordered: boolean;
     numberFormat: string;
     bulletStyle: string;
+    numId: string;
     items: any[];
   }[] = [];
 
@@ -765,15 +862,20 @@ function foldListBlocks(flat: FlatBlock[]): any[] {
         ordered: b.ordered,
         numberFormat: b.numberFormat,
         bulletStyle: b.bulletStyle,
+        numId: b.numId,
         items: [],
       });
-    } else if (stack[stack.length - 1].ordered !== b.ordered) {
+    } else if (
+      stack[stack.length - 1].ordered !== b.ordered ||
+      stack[stack.length - 1].numId !== b.numId
+    ) {
       closeTop();
       stack.push({
         level: b.level,
         ordered: b.ordered,
         numberFormat: b.numberFormat,
         bulletStyle: b.bulletStyle,
+        numId: b.numId,
         items: [],
       });
     }
@@ -791,18 +893,33 @@ function parseParagraphEl(pEl: Element, ctx: ParseCtx): FlatBlock {
   const styleId = wAttr(child(pPr, 'pStyle'), 'val');
   const styleInfo = styleId ? (ctx.styles.get(styleId) ?? null) : null;
 
-  const numPr = child(pPr, 'numPr');
-  const ilvl = numPr ? Number(wAttr(child(numPr, 'ilvl'), 'val') ?? '0') : null;
-  const numId = numPr ? wAttr(child(numPr, 'numId'), 'val') : null;
+  // 段落自身的 numPr 优先；否则继承样式链上的编号定义（Word 多级列表常见）
+  const directNumPr = child(pPr, 'numPr');
+  const effectiveNumPr = directNumPr ?? styleInfo?.numPr ?? null;
+  const ilvl = effectiveNumPr
+    ? Number(wAttr(child(effectiveNumPr, 'ilvl'), 'val') ?? '0')
+    : null;
+  const numId = effectiveNumPr
+    ? wAttr(child(effectiveNumPr, 'numId'), 'val')
+    : null;
 
   const directAlign = normalizeAlign(wAttr(child(pPr, 'jc'), 'val'));
   const align = directAlign ?? styleInfo?.align ?? null;
   const indent = parseIndentLevel(pPr);
   const lineSpacing = parseLineSpacing(pPr);
 
-  const inline = parseInlineContent(pEl, ctx, styleInfo?.rPr ?? {});
+  let inline = parseInlineContent(pEl, ctx, styleInfo?.rPr ?? {});
   const headingLevel = styleInfo?.headingLevel ?? null;
   const blockId = ctx.nextBlockId();
+
+  // 标题若带自动编号，把编号文本前置显示（schema 的 list_item 不能包含 heading）
+  if (headingLevel && numId != null && ilvl != null) {
+    const lvlInfo = ctx.numbering.get(numId)?.get(ilvl);
+    const numberText = buildHeadingNumberText(ctx, numId, ilvl, lvlInfo);
+    if (numberText) {
+      inline = [{ type: 'text', text: `${numberText} ` }, ...inline];
+    }
+  }
 
   const node = headingLevel
     ? {
@@ -834,6 +951,7 @@ function parseParagraphEl(pEl: Element, ctx: ParseCtx): FlatBlock {
       ordered: false,
       numberFormat: 'decimal',
       bulletStyle: 'disc',
+      lvlText: null,
     };
     return {
       kind: 'listItem',
@@ -841,6 +959,7 @@ function parseParagraphEl(pEl: Element, ctx: ParseCtx): FlatBlock {
       ordered: info.ordered,
       numberFormat: info.numberFormat,
       bulletStyle: info.bulletStyle,
+      numId,
       node,
     };
   }
@@ -967,6 +1086,7 @@ export async function parseDocxFile(
   const ctx: ParseCtx = {
     styles,
     numbering,
+    numberingCounters: new Map<string, number[]>(),
     rels,
     media,
     warnings,
