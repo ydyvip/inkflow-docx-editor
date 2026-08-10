@@ -13,6 +13,51 @@ npm run build       # 生产构建（tsc + vite build）
 npm run preview     # 预览生产构建
 ```
 
+## 桌面版（Electron）
+
+同一套渲染进程（Solid + ProseMirror + 自研 OOXML 解析器）既能在浏览器里跑，
+也能直接作为 Electron 桌面应用运行——核心解析/编辑/导出逻辑零改动，只是把
+「文件从哪来 / 输出到哪去」这两个 I/O 边界换成了原生文件对话框。
+
+### 开发 & 运行
+
+```bash
+npm run dev:desktop     # 一键启动：Vite dev server + Electron（支持热更新）
+npm run build           # 先构建渲染进程到 dist/
+npm run start:electron  # 直接以 Electron 打开 built 产物（electron .）
+npm run dist:win        # 打包 Windows 安装包到 release/（electron-builder）
+```
+
+### 桌面能力与浏览器差异
+
+| 能力 | 桌面版（Electron） | 浏览器版 |
+| ---- | ----------------- | -------- |
+| 打开 DOCX | 系统「打开」对话框 / 双击 .docx 文件关联 / Ctrl+O | 拖拽或文件选择 |
+| 保存 DOCX | 系统「另存为」对话框写盘；已打开文件 Ctrl+S 直接覆盖 | file-saver 浏览器下载 |
+| 新建空白文档 | 头工具栏「新建」+ Ctrl+N | 上传页「从空白文档开始」 |
+| 原生菜单 | 文件 / 编辑 / 视图 / 窗口（含快捷键） | 无 |
+
+### 实现结构
+
+```
+electron/
+ ├── main.cjs      — 主进程：BrowserWindow、IPC 打开/保存对话框、原生菜单、
+ │                   命令行/文件关联打开 .docx、开发/生产加载逻辑
+ └── preload.cjs   — contextBridge 把白名单 IPC 暴露为 window.inkflow
+src/
+ └── utils/desktop.ts        — 渲染进程统一入口：isElectron() + 打开/保存/菜单桥接
+ └── types/electron.d.ts     — window.inkflow 的类型声明
+```
+
+**设计要点**：
+- 桌面打开时，主进程把 .docx 字节经 IPC 传回，渲染进程包装成 `File` 后走
+  **原有的 `parseDocx` 解析流水线**（含 Worker）；保存时把 `docx.js` 产出的
+  Blob 字节写盘。中间的解析/导出代码完全复用。
+- 安全：`contextIsolation: true` + `nodeIntegration: false`，渲染进程只通过
+  `window.inkflow` 白名单方法访问原生能力。
+- 浏览器回退：所有 `window.inkflow` 调用都有存在性判断，`npm run dev` /
+  现有 Playwright e2e 跑在纯浏览器时行为与改造前完全一致。
+
 打开页面后：
 
 1. 拖拽 / 选择一个 `.docx` 文件上传，或点击"从空白文档开始"

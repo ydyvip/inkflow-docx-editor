@@ -1,6 +1,7 @@
-import { createSignal } from 'solid-js';
+import { createSignal, Show } from 'solid-js';
 import { parseDocx } from '../parser/parseDocx';
 import { EMPTY_DOC } from '../schema';
+import { isElectron, openDocxViaDialog } from '../utils/desktop';
 import type { DocxComment } from '../parser/ooxml';
 
 interface UploadPanelProps {
@@ -35,6 +36,24 @@ export function UploadPanel(props: UploadPanelProps) {
   };
 
   const startBlank = () => props.onParsed(EMPTY_DOC, '未命名文档.docx', [], []);
+
+  // Electron 桌面环境：弹出系统「打开」对话框（与拖拽/选择共用同一解析流水线）
+  const openFromDesktop = async () => {
+    setStatus('parsing');
+    setError(null);
+    try {
+      const opened = await openDocxViaDialog();
+      if (!opened) {
+        setStatus('idle'); // 用户取消了对话框
+        return;
+      }
+      props.onParsed(opened.json, opened.fileName, opened.warnings, opened.comments);
+      setStatus('idle');
+    } catch (err) {
+      setStatus('error');
+      setError(err instanceof Error ? err.message : '解析失败');
+    }
+  };
 
   return (
     <div class="h-full flex flex-col items-center justify-center gap-5 p-10 bg-canvas">
@@ -83,6 +102,17 @@ export function UploadPanel(props: UploadPanelProps) {
       <button type="button" class="bg-transparent border-0 text-ink-2 text-[13.5px] cursor-pointer underline underline-offset-3 decoration-line-strong hover:text-accent-ink" onClick={startBlank}>
         或从空白文档开始
       </button>
+
+      <Show when={isElectron()}>
+        <button
+          type="button"
+          class="px-3.5 py-2 rounded-lg text-[13px] font-semibold border border-line-strong bg-paper text-ink-1 transition-all hover:border-accent hover:bg-accent-wash disabled:opacity-45 disabled:cursor-not-allowed"
+          disabled={status() === 'parsing'}
+          onClick={openFromDesktop}
+        >
+          📂 打开 DOCX…
+        </button>
+      </Show>
     </div>
   );
 }

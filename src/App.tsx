@@ -1,9 +1,18 @@
-import { createSignal, Show } from 'solid-js';
+import { createSignal, Show, onMount } from 'solid-js';
 import { UploadPanel } from './upload/UploadPanel';
 import { EditorPane } from './editor/EditorPane';
 import { PreviewPane } from './preview/PreviewPane';
 import { exportAndDownloadDocx } from './export/exportDocx';
 import { applyAIPatch } from './utils/applyAIPatch';
+import { EMPTY_DOC } from './schema';
+import {
+  isElectron,
+  onMenu,
+  onOpenResult,
+  openDocxViaDialog,
+  saveDocxViaDialog,
+  resetCurrentFile,
+} from './utils/desktop';
 import type { DocxComment } from './parser/ooxml';
 
 type Stage = 'upload' | 'edit' | 'preview';
@@ -44,15 +53,32 @@ function App() {
     setDocJson(json);
   };
 
-  const handleExport = async () => {
+  const handleExport = async (saveAs = false) => {
     const current = docJson();
     if (!current) return;
     setBusy('export');
     try {
-      await exportAndDownloadDocx(current, fileName(), comments());
-      setPulseExport(true);
-      showToast('已导出 DOCX');
-      setTimeout(() => setPulseExport(false), 1600);
+      if (isElectron()) {
+        // 桌面环境：通过系统「保存/另存为」对话框写盘
+        const savedName = await saveDocxViaDialog(
+          current,
+          fileName(),
+          comments(),
+          saveAs
+        );
+        if (savedName) {
+          setFileName(savedName);
+          setPulseExport(true);
+          showToast('已保存 DOCX');
+          setTimeout(() => setPulseExport(false), 1600);
+        }
+      } else {
+        // 浏览器环境：沿用原有 file-saver 下载
+        await exportAndDownloadDocx(current, fileName(), comments());
+        setPulseExport(true);
+        showToast('已导出 DOCX');
+        setTimeout(() => setPulseExport(false), 1600);
+      }
     } catch (err) {
       showToast(
         `导出失败：${err instanceof Error ? err.message : String(err)}`,
@@ -60,6 +86,80 @@ function App() {
       );
     } finally {
       setBusy('');
+    }
+  };
+
+  // 新建空白文档
+  const handleNew = async () => {
+    if (isElectron()) await resetCurrentFile();
+    setDocJson(EMPTY_DOC);
+    setFileName('未命名文档.docx');
+    setWarnings([]);
+    setComments([]);
+    setLoadKey((k) => k + 1);
+    setStage('edit');
+    showToast('已新建空白文档');
+  };
+
+  // 用解析结果进入编辑态（供桌面打开/命令行打开复用）
+  const applyParsed = (
+    json: any,
+    name: string,
+    msgs: string[],
+    parsedComments: DocxComment[]
+  ) => {
+    setDocJson(json);
+    setFileName(name);
+    setWarnings(msgs);
+    setComments(parsedComments);
+    setLoadKey((k) => k + 1);
+    setStage('edit');
+  };
+
+  // 桌面集成：订阅原生菜单快捷键 + 命令行/文件关联打开的 .docx
+  onMount(() => {
+    const offMenu = onMenu((action) => {
+      if (action === 'new') void handleNew();
+      else if (action === 'open') void openViaMenu();
+      else if (action === 'save') void handleExport(false);
+      else if (action === 'saveAs') void handleExport(true);
+    });
+
+    const offOpen = onOpenResult(async (result) => {
+      if (!result || 'error' in result) return;
+      // 规整成 ArrayBuffer 背书的视图后才能作为 File 的 BlobPart
+      const view: Uint8Array<ArrayBuffer> = Uint8Array.from(result.data);
+      const file = new File([view], result.name, {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+      try {
+        const { parseDocx } = await import('./parser/parseDocx');
+        const { json, warnings, comments } = await parseDocx(file);
+        applyParsed(json, result.name, warnings, comments);
+      } catch (err) {
+        showToast(
+          `打开失败：${err instanceof Error ? err.message : String(err)}`,
+          3000
+        );
+      }
+    });
+
+    return () => {
+      offMenu();
+      offOpen();
+    };
+  });
+
+  // 供菜单「打开」复用：与 UploadPanel 共用同一套桌面解析入口
+  const openViaMenu = async () => {
+    try {
+      const opened = await openDocxViaDialog();
+      if (opened) applyParsed(opened.json, opened.fileName, opened.warnings, opened.comments);
+    } catch (err) {
+      showToast(
+        `打开失败：${err instanceof Error ? err.message : String(err)}`,
+        3000
+      );
     }
   };
 
@@ -145,6 +245,17 @@ function App() {
               预览
             </button>
           </div>
+          <Show when={isElectron()}>
+            <button
+              type="button"
+              class="px-3.5 py-2 rounded-lg text-[13px] font-semibold border border-line-strong bg-paper text-ink-1 transition-all hover:border-accent-soft hover:bg-accent-wash disabled:opacity-45 disabled:cursor-not-allowed"
+              disabled={busy() !== ''}
+              onClick={handleNew}
+              title="新建空白文档 (Ctrl+N)"
+            >
+              新建
+            </button>
+          </Show>
           <button
             type="button"
             class="px-3.5 py-2 rounded-lg text-[13px] font-semibold border border-line-strong bg-paper text-ink-1 transition-all hover:border-accent-soft hover:bg-accent-wash disabled:opacity-45 disabled:cursor-not-allowed"
@@ -158,7 +269,7 @@ function App() {
             type="button"
             class="px-3.5 py-2 rounded-lg text-[13px] font-semibold border border-accent bg-accent text-white transition-all hover:bg-accent-ink hover:border-accent-ink disabled:opacity-45 disabled:cursor-not-allowed"
             disabled={!hasDoc() || busy() !== ''}
-            onClick={handleExport}
+            onClick={() => handleExport(false)}
           >
             {busy() === 'export' ? '导出中…' : '导出 DOCX'}
           </button>

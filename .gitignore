@@ -12,6 +12,8 @@ package-lock.json
 node_modules
 dist
 dist-ssr
+dist-electron
+release
 *.local
 
 # Editor directories and files

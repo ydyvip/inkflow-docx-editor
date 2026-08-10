@@ -1,0 +1,61 @@
+# InkFlow · Electron 打包配置 (electron-builder)
+# 用法：npm run dist:win  （先构建渲染进程到 dist/，再打包 Windows 安装包到 release/）
+appId: com.inkflow.docxeditor
+productName: InkFlow
+copyright: Copyright © 2026 InkFlow
+
+directories:
+  output: release
+  buildResources: build
+
+# 渲染进程已由 Vite 打包进 dist/，主/预加载进程在 electron/，
+# 因此 asar 里只需这两个目录 + package.json，不需要冗余的生产依赖。
+files:
+  - dist/**
+  - electron/**
+  - package.json
+  - '!**/*.map'
+  - '!**/*.md'
+
+# 不使用 asar 也可以，但默认作为可分发最小化更好维护
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  executableName: InkFlow
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: InkFlow
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+
+linux:
+  category: Office
+  target:
+    - target: AppImage
+      arch: [x64]
+
+npmRebuild: false
+electronLanguages:
+  - zh-CN
+  - en-US
+
+# 文件关联：双击 .docx 用 InkFlow 打开（主进程从命令行参数读取路径）
+fileAssociations:
+  - ext: docx
+    name: DOCX 文档
+    description: Microsoft Word 文档 (Open XML)
+    mimeType: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+    role: Editor
+    isPackage: false
