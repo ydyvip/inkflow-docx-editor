@@ -94,7 +94,17 @@ export async function parseDocx(file: File): Promise<ParseResult> {
     try {
       return await convertViaWorker(arrayBuffer.slice(0));
     } catch (workerErr) {
-      if (arrayBuffer.byteLength > MAX_MAIN_THREAD_BYTES) throw workerErr;
+      // 环境不兼容（如 Safari 的 Web Worker 里没有 DOMParser）时，无论文件多大都
+      // 回主线程重试——主线程一定有 DOMParser；其它真正的 Worker 错误仍按大小门槛处理，
+      // 避免大文件在主线程解析阻塞 UI。
+      const msg =
+        workerErr instanceof Error ? workerErr.message : String(workerErr);
+      const envIncompatible = /DOMParser\s+is\s+not\s+defined/i.test(msg);
+      if (
+        !envIncompatible &&
+        arrayBuffer.byteLength > MAX_MAIN_THREAD_BYTES
+      )
+        throw workerErr;
       return convertViaMainThread(arrayBuffer);
     }
   }
