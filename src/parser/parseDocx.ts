@@ -11,15 +11,35 @@ import type {
   ParseWorkerRequest,
   ParseWorkerResponse,
 } from '../worker/parse.worker';
-import type { DocxComment } from './ooxml';
+import type { DocxComment, DocxPageSetup, DocxSection } from './ooxml';
 
 export interface ParseResult {
   json: any; // ProseMirror JSON Document（§5.1）—— 系统唯一真相源
   comments: DocxComment[];
   warnings: string[];
+  /** 页面几何（纸张大小 + 页边距，twips）*/
+  pageSetup: DocxPageSetup;
+  /** 默认页眉 PM JSON 文档 / null */
+  header: any | null;
+  /** 默认页脚 PM JSON 文档 / null */
+  footer: any | null;
+  /** 逐节页眉/页脚（支持每节独立页眉页脚的文档）*/
+  sections: DocxSection[];
 }
 
 const MAX_MAIN_THREAD_BYTES = 2 * 1024 * 1024; // 2MB 以下允许主线程兜底
+
+/** 缺省页面几何（A4 + Word 默认页边距），用于缺少 sectPr 的空白/异常文档 */
+export const DEFAULT_PAGE_SETUP: DocxPageSetup = {
+  pageWidthTw: 11906,
+  pageHeightTw: 16838,
+  marginTopTw: 1417,
+  marginBottomTw: 1134,
+  marginLeftTw: 1417,
+  marginRightTw: 1417,
+  headerDistTw: 708,
+  footerDistTw: 708,
+};
 
 function convertViaWorker(arrayBuffer: ArrayBuffer): Promise<ParseResult> {
   return new Promise((resolve, reject) => {
@@ -43,6 +63,10 @@ function convertViaWorker(arrayBuffer: ArrayBuffer): Promise<ParseResult> {
           json: event.data.json,
           comments: event.data.comments ?? [],
           warnings: event.data.warnings ?? [],
+          pageSetup: event.data.pageSetup ?? DEFAULT_PAGE_SETUP,
+          header: event.data.header ?? null,
+          footer: event.data.footer ?? null,
+          sections: event.data.sections ?? [],
         });
       } else {
         reject(new Error(event.data.error ?? 'Worker 解析失败'));
@@ -68,6 +92,10 @@ async function convertViaMainThread(
     json: result.json,
     comments: result.comments,
     warnings: result.warnings,
+    pageSetup: result.pageSetup,
+    header: result.header,
+    footer: result.footer,
+    sections: result.sections,
   };
 }
 

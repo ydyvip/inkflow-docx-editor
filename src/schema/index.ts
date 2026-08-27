@@ -97,9 +97,44 @@ const headingSpec = withBlockAttrs(
   HEADING_EXTRA_PARSE_DOM
 );
 
+// 图片：新增 width（来自 DOCX wp:extent 的欧姆尺寸，单位 CSS px）。
+// toDOM 把 width 写为 HTML 属性；CSS 里配 max-width:100% + height:auto，
+// 因此按文档放置宽度渲染、保持真实纵横比、且不会撑破页面。
+const imageSpec: NodeSpec = {
+  ...basicSchema.spec.nodes.get('image')!,
+  attrs: {
+    ...(basicSchema.spec.nodes.get('image')!.attrs ?? {}),
+    width: { default: null },
+  },
+  toDOM(node) {
+    const domAttrs: Record<string, any> = { src: node.attrs.src };
+    if (node.attrs.alt) domAttrs.alt = node.attrs.alt;
+    if (node.attrs.title) domAttrs.title = node.attrs.title;
+    // 内联 style 显式写宽（HTML width 属性会被 display:block + height:auto
+    // 的排版冲掉），配合 CSS max-width:100% 保证超宽时缩回内容区且不变形。
+    if (node.attrs.width) {
+      domAttrs.width = node.attrs.width;
+      domAttrs.style = `width:${node.attrs.width}px`;
+    }
+    return ['img', domAttrs];
+  },
+  parseDOM: [
+    {
+      tag: 'img[src]',
+      getAttrs: (dom) => ({
+        src: (dom as HTMLElement).getAttribute('src'),
+        alt: (dom as HTMLElement).getAttribute('alt'),
+        title: (dom as HTMLElement).getAttribute('title'),
+        width: (dom as HTMLElement).getAttribute('width') || null,
+      }),
+    },
+  ],
+};
+
 const nodesWithBlockIds = basicSchema.spec.nodes
   .update('paragraph', paragraphSpec)
-  .update('heading', headingSpec);
+  .update('heading', headingSpec)
+  .update('image', imageSpec);
 
 // 1. 基础 nodes + 列表 nodes
 const nodesWithLists = addListNodes(
@@ -112,6 +147,8 @@ const nodesWithLists = addListNodes(
 // bullet_list 新增 bulletStyle（对应 CSS list-style-type 的 disc/circle/square），
 // ordered_list 新增 numberFormat（decimal/lower-alpha/upper-alpha/lower-roman/upper-roman，
 // 与 CSS list-style-type 关键字一致，导出时映射到 docx.js 的 LevelFormat）。
+// 同时从 OOXML 逐级带回 布局(w:ind left→indent / hanging) 与 字体特征(rPr→font)，
+// 让列表与其编号/符号在预览里的缩进与字体尽量贴近原文档。
 function withListStyleAttr(
   base: NodeSpec,
   attrName: string,
@@ -119,7 +156,14 @@ function withListStyleAttr(
 ): NodeSpec {
   return {
     ...base,
-    attrs: { ...(base.attrs ?? {}), [attrName]: { default: defaultValue } },
+    attrs: {
+      ...(base.attrs ?? {}),
+      [attrName]: { default: defaultValue },
+      indent: { default: 0 }, // w:ind w:left（twips）
+      hanging: { default: 0 }, // w:ind w:hanging（twips）
+      font: { default: null }, // rPr：{ fontFamily, sizeHalfPt }
+      literal: { default: false }, // 解析自 DOCX 的有序列表：用计算出的编号文本渲染
+    },
     toDOM(node) {
       const baseArr = (base.toDOM
         ? base.toDOM(node)
@@ -128,14 +172,36 @@ function withListStyleAttr(
       const hole = baseArr[baseArr.length - 1];
       const domAttrs: Record<string, any> =
         baseArr.length === 3 ? { ...baseArr[1] } : {};
+      const style: string[] = [];
       const styleVal = node.attrs[attrName];
+      const literal = node.attrs.literal;
       // 必须始终显式写出 list-style-type，否则 Tailwind 的 Preflight 会
       // 把列表 marker 重置为 none，导致默认项目符号 / 数字不显示。
-      if (styleVal) {
-        domAttrs.style =
-          (domAttrs.style ? domAttrs.style + ';' : '') +
-          `list-style-type:${styleVal}`;
+      // 解析自 DOCX 的有序列表有渲染在原生 marker 盒子里的编号文本（li --marker-text），
+      // 因此保留一个非 none 的 marker 盒子（这里用 decimal，真正显示的数字由 ::marker
+      // 的 content=var(--marker-text) 覆盖），编辑器新建的列表仍走原生 marker。
+      if (literal) style.push('list-style-type:decimal');
+      else if (styleVal) style.push(`list-style-type:${styleVal}`);
+      // 布局：以 w:ind 的左缩进（含悬挂基准）作为列表缩进，替换浏览器默认 padding。
+      const indLeft = Number(node.attrs.indent) || 0;
+      const hanging = Number(node.attrs.hanging) || 0;
+      if (indLeft > 0 || hanging > 0) {
+        const padLeft = (hanging > 0 ? Math.max(indLeft, hanging) : indLeft) / 15;
+        style.push(`padding-left:${padLeft.toFixed(2)}px;margin:0`);
+        // 非 literal（原生 marker）时用 text-indent 做悬挂缩进；literal 靠 ::before 行内渲染。
+        if (hanging > 0 && !literal)
+          style.push(`text-indent:${(-hanging / 15).toFixed(2)}px`);
       }
+      // 字体特征：编号/符号字体的字体族与字号，用 CSS 变量交给 marker / ::before 渲染。
+      const f = node.attrs.font as
+        | { fontFamily: string | null; sizeHalfPt: number | null }
+        | null
+        | undefined;
+      if (f && f.fontFamily)
+        style.push(`--marker-family:${JSON.stringify(f.fontFamily)}`);
+      if (f && f.sizeHalfPt)
+        style.push(`--marker-size:${(Number(f.sizeHalfPt) / 2).toFixed(1)}pt`);
+      if (style.length) domAttrs.style = style.join(';');
       return [tag, domAttrs, hole];
     },
   };
@@ -151,9 +217,35 @@ const orderedListSpec = withListStyleAttr(
   'numberFormat',
   'decimal'
 );
+
+// 列表条目：解析自 DOCX 的有序列表逐项携带计算好的编号文本（marker）。
+// 渲染成 data-marker + 内联 CSS 变量 --marker-text，由 CSS li[data-marker]::marker 输出，
+// 不写进可编辑内容（导出不会双号）；marker 文本放到原生 marker 盒子，与正文首行同基线。
+const listItemBase = nodesWithLists.get('list_item')!;
+const listItemSpec: NodeSpec = {
+  ...listItemBase,
+  attrs: { ...(listItemBase.attrs ?? {}), marker: { default: null } },
+  toDOM(node) {
+    const baseArr = (
+      listItemBase.toDOM ? listItemBase.toDOM(node) : ['li', 0]
+    ) as unknown as any[];
+    if (!node.attrs.marker) return baseArr;
+    const tag = baseArr[0];
+    const hole = baseArr[baseArr.length - 1];
+    const domAttrs: Record<string, any> =
+      baseArr.length === 3 ? { ...baseArr[1] } : {};
+    domAttrs['data-marker'] = node.attrs.marker;
+    domAttrs.style =
+      (domAttrs.style ? domAttrs.style + ';' : '') +
+      `--marker-text:${JSON.stringify(node.attrs.marker)}`;
+    return [tag, domAttrs, hole] as unknown as any;
+  },
+};
+
 const nodesWithListStyles = nodesWithLists
   .update('bullet_list', bulletListSpec)
-  .update('ordered_list', orderedListSpec);
+  .update('ordered_list', orderedListSpec)
+  .update('list_item', listItemSpec);
 
 // 2. 表格 nodes（§6.4 表格必须插件化实现）
 //    - table 新增 align（表格在页面中的左/中/右对齐）

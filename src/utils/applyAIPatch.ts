@@ -44,12 +44,15 @@ async function localOutlinePatch(jsonDoc: any): Promise<any> {
     return jsonDoc; // 没有标题，不生成大纲
   }
 
+  // 用段落级 indent（→ margin-left）呈现真实层级缩进，而不是用全角空格伪造
+  //（空格在部分渲染下会塌陷/不对齐，无法稳定体现"内容里的目录"层次感）。
   const outlineParagraphs = headings.map((h) => ({
     type: 'paragraph',
+    attrs: { indent: Math.min(8, Math.max(0, h.level - 1)) },
     content: [
       {
         type: 'text',
-        text: `${'　'.repeat(Math.max(0, h.level - 1))}· ${h.text}`,
+        text: `· ${h.text}`,
       },
     ],
   }));

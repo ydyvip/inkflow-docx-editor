@@ -9,7 +9,11 @@
  * 这一步也一起放进了 Worker——不再需要像 mammoth 方案那样，回到主线程
  * 用浏览器 DOM 把 HTML 转成 ProseMirror JSON。
  */
-import { parseDocxFile } from '../parser/ooxml';
+import {
+  parseDocxFile,
+  type DocxPageSetup,
+  type DocxSection,
+} from '../parser/ooxml';
 
 export interface ParseWorkerRequest {
   id: string;
@@ -20,6 +24,10 @@ export interface ParseWorkerResponse {
   id: string;
   ok: boolean;
   json?: any;
+  pageSetup?: DocxPageSetup;
+  header?: any | null;
+  footer?: any | null;
+  sections?: DocxSection[];
   comments?: {
     id: number;
     author: string;
@@ -38,6 +46,10 @@ self.onmessage = async (event: MessageEvent<ParseWorkerRequest>) => {
       id,
       ok: true,
       json: result.json,
+      pageSetup: result.pageSetup,
+      header: result.header,
+      footer: result.footer,
+      sections: result.sections,
       comments: result.comments,
       warnings: result.warnings,
     };

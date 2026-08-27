@@ -1,108 +1,127 @@
-import { createSignal, createEffect, onCleanup, Show } from 'solid-js';
-import { EditorState, TextSelection } from 'prosemirror-state';
-import { EditorView } from 'prosemirror-view';
+import { createSignal, createEffect, createMemo, Show } from 'solid-js';
+import { EditorState } from 'prosemirror-state';
+import type { Node as PMNode } from 'prosemirror-model';
 import { docSchema } from '../schema';
-import { pluginRegistry } from '../plugins/registry';
-import {
-  highlightPluginKey,
-  highlightPlugin,
-  type HighlightMeta,
-} from '../editor/highlightPlugin';
+import { highlightPlugin } from '../editor/highlightPlugin';
 import { OutlineTree, type OutlineItem } from '../outline/OutlineTree';
-import {
-  computeOutline,
-  findNodeById,
-  scrollPosIntoView,
-} from '../outline/computeOutline';
+import { computeOutline } from '../outline/computeOutline';
 import { CommentsPanel, type CommentItem } from '../comments/CommentsPanel';
 import { FloatingToolbar } from '../editor/FloatingToolbar';
+import {
+  VirtualPagedPreview,
+  type VirtualPagedPreviewApi,
+  type ActiveViewInfo,
+} from './VirtualPagedPreview';
+import type { DocxPageSetup, DocxSection } from '../parser/ooxml';
 
 interface PreviewPaneProps {
   docJson: any;
   initialComments?: CommentItem[];
+  pageSetup?: DocxPageSetup | null;
+  header?: any | null;
+  footer?: any | null;
+  sections?: DocxSection[];
   onCommentsChange?: (comments: CommentItem[]) => void;
 }
 
 /**
- * Preview 模块 —— readonly EditorView
+ * Preview 模块 —— 虚拟化分页只读预览
  */
 export function PreviewPane(props: PreviewPaneProps) {
-  let hostEl: HTMLDivElement | undefined;
-  let view: EditorView | undefined;
-  const [version, setVersion] = createSignal(0);
+  let apiRef: VirtualPagedPreviewApi | undefined;
+  const [dirDoc, setDirDoc] = createSignal<PMNode | null>(null);
+  const [commentsVersion, setCommentsVersion] = createSignal(0);
   const [showOutline, setShowOutline] = createSignal(true);
   const [comments, setComments] = createSignal<CommentItem[]>(
     props.initialComments ?? []
   );
+  const [activeView, setActiveView] = createSignal<ActiveViewInfo | null>(null);
 
+  // 全局唯一的 doc 真相源：把 JSON 反序列化一次，之后增删批注都重建它
   createEffect(() => {
     const json = props.docJson;
-    if (!hostEl) return;
+    if (json == null) return;
+    setDirDoc(docSchema.nodeFromJSON(json));
+  });
 
-    const doc = docSchema.nodeFromJSON(json);
+  const outlineItems = createMemo<OutlineItem[]>(() => {
+    const doc = dirDoc();
+    return doc ? computeOutline(doc) : [];
+  });
+
+  /** 预览模式下添加批注：作用于全局 doc，重建后 bump version 让分页重渲染 */
+  const addCommentOnRange = (from: number, to: number) => {
+    const doc = dirDoc();
+    const info = activeView();
+    if (!doc || !info) return;
+    const text = window.prompt('输入批注内容：');
+    if (!text) return;
+    const existingIds = comments().map((c) => c.id);
+    const newId = (existingIds.length ? Math.max(...existingIds) : 0) + 1;
+    const globalFrom = info.globalStart + from;
+    const globalTo = info.globalStart + to;
     const state = EditorState.create({
       schema: docSchema,
       doc,
       plugins: [highlightPlugin()],
     });
-    view = new EditorView(hostEl, {
-      state,
-      editable: () => false,
-      nodeViews: pluginRegistry.nodeViews(docSchema),
-      dispatchTransaction(tr) {
-        if (!view) return;
-        view.updateState(view.state.apply(tr));
-        setVersion((n) => n + 1);
-      },
-    });
-    setVersion((n) => n + 1);
-
-    onCleanup(() => {
-      view?.destroy();
-      view = undefined;
-    });
-  });
-
-  const outlineItems = (): OutlineItem[] => {
-    version();
-    return view ? computeOutline(view.state.doc) : [];
-  };
-
-  const scrollToBlock = (id: string) => {
-    if (!view || !hostEl) return;
-    const found = findNodeById(view.state.doc, id);
-    if (!found) return;
-    const selPos = Math.min(found.pos + 1, view.state.doc.content.size);
-    const tr = view.state.tr
-      .setSelection(TextSelection.near(view.state.doc.resolve(selPos)))
-      .setMeta(highlightPluginKey, {
-        ids: [id],
-        mode: 'replace',
-      } as HighlightMeta);
-    view.dispatch(tr);
-    scrollPosIntoView(view, hostEl.parentElement ?? hostEl, selPos);
-  };
-
-  /** 预览模式下添加批注 */
-  const addCommentOnRange = (from: number, to: number) => {
-    if (!view) return;
-    const text = window.prompt('输入批注内容：');
-    if (!text) return;
-    const existingIds = comments().map((c) => c.id);
-    const newId = (existingIds.length ? Math.max(...existingIds) : 0) + 1;
-    view.dispatch(
-      view.state.tr.addMark(
-        from,
-        to,
-        docSchema.marks.comment.create({ id: newId })
-      )
+    const tr = state.tr.addMark(
+      globalFrom,
+      globalTo,
+      docSchema.marks.comment.create({ id: newId })
     );
+    setDirDoc(tr.doc);
     const updated = [
       ...comments(),
       { id: newId, author: '我', date: new Date().toISOString(), text },
     ];
     setComments(updated);
+    setCommentsVersion((v) => v + 1);
     props.onCommentsChange?.(updated);
+  };
+
+  const jumpToBlock = (blockId: string) => {
+    const api = apiRef;
+    if (!api) return;
+    api.scrollToPage(api.blockToPage().get(blockId) ?? 0, {
+      highlightBlockId: blockId,
+    });
+  };
+
+  const jumpToComment = (commentId: number) => {
+    const api = apiRef;
+    if (!api) return;
+    api.scrollToPage(api.commentToPage().get(commentId) ?? 0, {
+      highlightCommentId: commentId,
+    });
+  };
+
+  const handleDelete = (id: number) => {
+    const doc = dirDoc();
+    const updated = comments().filter((c) => c.id !== id);
+    setComments(updated);
+    setCommentsVersion((v) => v + 1);
+    props.onCommentsChange?.(updated);
+    if (!doc) return;
+    const commentMarkType = docSchema.marks.comment;
+    const ranges: Array<{ from: number; to: number }> = [];
+    doc.descendants((node, pos) => {
+      if (!node.isText) return true;
+      node.marks.forEach((m) => {
+        if (
+          m.type === commentMarkType &&
+          Number(m.attrs.id) === Number(id)
+        ) {
+          ranges.push({ from: pos, to: pos + node.nodeSize });
+        }
+      });
+      return true;
+    });
+    if (ranges.length === 0) return;
+    const state = EditorState.create({ schema: docSchema, doc });
+    const tr = state.tr;
+    for (const r of ranges) tr.removeMark(r.from, r.to, commentMarkType);
+    if (tr.docChanged) setDirDoc(tr.doc);
   };
 
   return (
@@ -120,46 +139,31 @@ export function PreviewPane(props: PreviewPaneProps) {
         <span class="text-xs text-ink-3 whitespace-nowrap mr-0.5">只读预览 —— 样式来自解析出的原始 DOCX</span>
       </div>
       <FloatingToolbar
-        view={() => view}
+        view={() => activeView()?.view}
         schema={() => docSchema}
         onAddComment={addCommentOnRange}
         showFontControls={false}
       />
       <div class="flex-1 min-h-0 flex overflow-hidden">
         <Show when={showOutline()}>
-          <OutlineTree items={outlineItems()} onJump={scrollToBlock} />
+          <OutlineTree items={outlineItems()} onJump={jumpToBlock} />
         </Show>
-        <div class="flex-1 min-w-0 overflow-y-auto px-6 pb-24 pt-10 bg-canvas">
-          <div class="max-w-[760px] min-h-[900px] mx-auto bg-paper shadow-[0_1px_2px_rgba(23,26,33,0.06),0_12px_32px_rgba(23,26,33,0.08)] rounded-[3px] px-[76px] py-[72px] border-l-[3px] border-l-accent editor-page preview-mode" ref={hostEl} />
-        </div>
+        <VirtualPagedPreview
+          doc={dirDoc()!}
+          commentsVersion={commentsVersion()}
+          pageSetup={props.pageSetup ?? null}
+          header={props.header ?? null}
+          footer={props.footer ?? null}
+          sections={props.sections ?? []}
+          onApiReady={(api) => {
+            apiRef = api;
+          }}
+          onActiveViewChange={(info) => setActiveView(info)}
+        />
         <Show when={comments().length > 0}>
           <CommentsPanel
             comments={comments()}
-            onJump={(id) => {
-              if (!view) return;
-              let from: number | null = null;
-              let to: number | null = null;
-              view.state.doc.descendants((node, pos) => {
-                if (
-                  node.isText &&
-                  node.marks.some((m) => m.type.name === 'comment' && Number(m.attrs.id) === Number(id))
-                ) {
-                  if (from === null || pos < from) from = pos;
-                  const end = pos + node.nodeSize;
-                  if (to === null || end > to) to = end;
-                }
-                return true;
-              });
-              if (from === null || to === null) return;
-              const tr = view.state.tr
-                .setSelection(TextSelection.near(view.state.doc.resolve(from)))
-                .setMeta(highlightPluginKey, {
-                  ranges: [{ from, to }],
-                  mode: 'replace',
-                } as HighlightMeta);
-              view.dispatch(tr);
-              scrollPosIntoView(view, hostEl!.parentElement ?? hostEl!, from);
-            }}
+            onJump={jumpToComment}
             onUpdate={(id, text) => {
               const updated = comments().map((c) =>
                 c.id === id ? { ...c, text } : c
@@ -167,45 +171,7 @@ export function PreviewPane(props: PreviewPaneProps) {
               setComments(updated);
               props.onCommentsChange?.(updated);
             }}
-            onDelete={(id) => {
-              if (!view) return;
-
-              const updated = comments().filter((c) => c.id !== id);
-              setComments(updated);
-              props.onCommentsChange?.(updated);
-
-              const commentMarkType = docSchema.marks.comment;
-              if (!commentMarkType) return;
-
-              const tr = view.state.tr;
-              const ranges: Array<{ from: number; to: number }> = [];
-
-              view.state.doc.descendants((node, pos) => {
-                if (!node.isText) return true;
-                node.marks.forEach((m) => {
-                  if (
-                    m.type === commentMarkType &&
-                    Number(m.attrs.id) === Number(id)
-                  ) {
-                    ranges.push({ from: pos, to: pos + node.nodeSize });
-                  }
-                });
-                return true;
-              });
-
-              for (const r of ranges) {
-                tr.removeMark(r.from, r.to, commentMarkType);
-              }
-
-              if (tr.docChanged) {
-                view.dispatch(tr);
-                view.dispatch(
-                  view.state.tr.setMeta(highlightPluginKey, {
-                    mode: 'clear-ranges',
-                  } as HighlightMeta)
-                );
-              }
-            }}
+            onDelete={handleDelete}
           />
         </Show>
       </div>

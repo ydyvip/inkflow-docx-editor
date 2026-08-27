@@ -32,6 +32,41 @@ import { CommentsPanel, type CommentItem } from '../comments/CommentsPanel';
 import { LIST_STYLE_OPTIONS } from './formatOptions';
 import { FloatingToolbar } from './FloatingToolbar';
 import { ParagraphSettings } from './ParagraphSettings';
+import type { DocxPageSetup, DocxSection } from '../parser/ooxml';
+
+/** twips → px（96dpi：1 英寸 = 1440 twips = 96px） */
+const TW_PER_PX = 1440 / 96;
+
+/** 编辑模式下纸张几何：与预览模式（VirtualPagedPreview.setupToGeometry）保持一致，
+ *  按真实 A4 页设置（宽度 + 页边距）计算；无页设置时回退到旧视觉近似值。 */
+const EDIT_FALLBACK = {
+  pageWidthPx: 760,
+  pageHeightPx: 1056,
+  marginTopPx: 72,
+  marginBottomPx: 72,
+  marginLeftPx: 76,
+  marginRightPx: 76,
+};
+
+function editorGeometry(
+  pageSetup: DocxPageSetup | null | undefined,
+  sections: DocxSection[] | null | undefined
+) {
+  // 优先取"可见/首个分节"的纸张设置（与预览首屏一致）；其次文档级 pageSetup；
+  // 最后回退到标准 A4 近似。避免按末节取到可能存在方向的封面/附录节。
+  const ps = sections?.[0]?.pageSetup ?? pageSetup;
+  if (!ps || typeof ps.pageWidthTw !== 'number' || !Number.isFinite(ps.pageWidthTw))
+    return EDIT_FALLBACK;
+  const px = (tw: number) => tw / TW_PER_PX;
+  return {
+    pageWidthPx: px(ps.pageWidthTw),
+    pageHeightPx: px(ps.pageHeightTw),
+    marginTopPx: px(ps.marginTopTw ?? 1417),
+    marginBottomPx: px(ps.marginBottomTw ?? 1417),
+    marginLeftPx: px(ps.marginLeftTw ?? 1417),
+    marginRightPx: px(ps.marginRightTw ?? 1417),
+  };
+}
 
 export interface EditorApi {
   highlightBlock: (blockId: string) => void;
@@ -47,6 +82,8 @@ interface EditorPaneProps {
   onChange: (json: any) => void;
   onCommentsChange?: (comments: CommentItem[]) => void;
   onReady?: (api: EditorApi) => void;
+  pageSetup?: DocxPageSetup | null;
+  sections?: DocxSection[] | null;
 }
 
 export function EditorPane(props: EditorPaneProps) {
@@ -359,6 +396,12 @@ export function EditorPane(props: EditorPaneProps) {
     }))
   );
 
+  // 纸张规格与预览模式一致（真实 A4 页设置 + 页边距），保证编辑与预览内容区同宽同边距
+  const geom = editorGeometry(props.pageSetup, props.sections);
+  const sheetStyle =
+    `width:${geom.pageWidthPx}px;min-height:${geom.pageHeightPx}px;` +
+    `padding:${geom.marginTopPx}px ${geom.marginRightPx}px ${geom.marginBottomPx}px ${geom.marginLeftPx}px;`;
+
   return (
     <div class="flex flex-col h-full min-h-0">
       {/* Row 1：结构 —— 列表 / 引用 / 插入 / 面板开关 */}
@@ -446,7 +489,11 @@ export function EditorPane(props: EditorPaneProps) {
           <OutlineTree items={outlineItems()} onJump={scrollToBlock} />
         </Show>
         <div class="flex-1 min-w-0 overflow-y-auto px-6 pb-24 pt-10 bg-canvas">
-          <div class="max-w-[760px] min-h-[900px] mx-auto bg-paper shadow-[0_1px_2px_rgba(23,26,33,0.06),0_12px_32px_rgba(23,26,33,0.08)] rounded-[3px] px-[76px] py-[72px] border-l-[3px] border-l-accent editor-page" ref={hostEl} />
+          <div
+            class="mx-auto bg-paper shadow-[0_1px_2px_rgba(23,26,33,0.06),0_12px_32px_rgba(23,26,33,0.08)] rounded-[3px] border-l-[3px] border-l-accent editor-page"
+            style={sheetStyle}
+            ref={hostEl}
+          />
         </div>
         <Show when={showComments()}>
           <CommentsPanel

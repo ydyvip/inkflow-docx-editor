@@ -31,6 +31,10 @@ export interface OpenedDocx {
   fileName: string;
   warnings: string[];
   comments: DocxComment[];
+  pageSetup: any;
+  header: any | null;
+  footer: any | null;
+  sections: any[];
 }
 
 /**
@@ -51,8 +55,18 @@ export async function openDocxViaDialog(): Promise<OpenedDocx | null> {
     type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   });
   await bridge.setCurrentFile(result.filePath);
-  const { json, warnings, comments } = await parseDocx(file);
-  return { json, fileName: result.name, warnings, comments };
+  const { json, warnings, comments, pageSetup, header, footer, sections } =
+    await parseDocx(file);
+  return {
+    json,
+    fileName: result.name,
+    warnings,
+    comments,
+    pageSetup,
+    header,
+    footer,
+    sections,
+  };
 }
 
 /**

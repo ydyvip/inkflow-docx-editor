@@ -14,6 +14,7 @@ import {
   resetCurrentFile,
 } from './utils/desktop';
 import type { DocxComment } from './parser/ooxml';
+import { DEFAULT_PAGE_SETUP } from './parser/parseDocx';
 
 type Stage = 'upload' | 'edit' | 'preview';
 
@@ -24,6 +25,10 @@ function App() {
   const [loadKey, setLoadKey] = createSignal(1);
   const [warnings, setWarnings] = createSignal<string[]>([]);
   const [comments, setComments] = createSignal<DocxComment[]>([]);
+  const [pageSetup, setPageSetup] = createSignal<any>(DEFAULT_PAGE_SETUP);
+  const [header, setHeader] = createSignal<any | null>(null);
+  const [footer, setFooter] = createSignal<any | null>(null);
+  const [sections, setSections] = createSignal<any[]>([]);
   const [busy, setBusy] = createSignal<'' | 'export' | 'ai'>('');
   const [pulseExport, setPulseExport] = createSignal(false);
   const [toast, setToast] = createSignal<string | null>(null);
@@ -39,12 +44,20 @@ function App() {
     json: any,
     name: string,
     msgs: string[],
-    parsedComments: DocxComment[]
+    parsedComments: DocxComment[],
+    pageSetupData: any,
+    hdr: any | null,
+    ftr: any | null,
+    parsedSections: any[]
   ) => {
     setDocJson(json);
     setFileName(name);
     setWarnings(msgs);
     setComments(parsedComments);
+    setPageSetup(pageSetupData ?? DEFAULT_PAGE_SETUP);
+    setHeader(hdr ?? null);
+    setFooter(ftr ?? null);
+    setSections(parsedSections ?? []);
     setLoadKey((k) => k + 1);
     setStage('edit');
   };
@@ -96,6 +109,10 @@ function App() {
     setFileName('未命名文档.docx');
     setWarnings([]);
     setComments([]);
+    setPageSetup(DEFAULT_PAGE_SETUP);
+    setHeader(null);
+    setFooter(null);
+    setSections([]);
     setLoadKey((k) => k + 1);
     setStage('edit');
     showToast('已新建空白文档');
@@ -106,12 +123,20 @@ function App() {
     json: any,
     name: string,
     msgs: string[],
-    parsedComments: DocxComment[]
+    parsedComments: DocxComment[],
+    pageSetupData?: any,
+    hdr?: any | null,
+    ftr?: any | null,
+    parsedSections?: any[]
   ) => {
     setDocJson(json);
     setFileName(name);
     setWarnings(msgs);
     setComments(parsedComments);
+    setPageSetup(pageSetupData ?? DEFAULT_PAGE_SETUP);
+    setHeader(hdr ?? null);
+    setFooter(ftr ?? null);
+    setSections(parsedSections ?? []);
     setLoadKey((k) => k + 1);
     setStage('edit');
   };
@@ -134,8 +159,9 @@ function App() {
       });
       try {
         const { parseDocx } = await import('./parser/parseDocx');
-        const { json, warnings, comments } = await parseDocx(file);
-        applyParsed(json, result.name, warnings, comments);
+        const { json, warnings, comments, pageSetup, header, footer } =
+          await parseDocx(file);
+        applyParsed(json, result.name, warnings, comments, pageSetup, header, footer);
       } catch (err) {
         showToast(
           `打开失败：${err instanceof Error ? err.message : String(err)}`,
@@ -296,12 +322,22 @@ function App() {
                 initialComments={comments()}
                 onChange={handleChange}
                 onCommentsChange={setComments}
+                pageSetup={pageSetup()}
+                sections={sections()}
               />
             )}
           </Show>
         </Show>
         <Show when={stage() === 'preview' && hasDoc()}>
-          <PreviewPane docJson={docJson()} initialComments={comments()} onCommentsChange={setComments} />
+          <PreviewPane
+            docJson={docJson()}
+            initialComments={comments()}
+            pageSetup={pageSetup()}
+            header={header()}
+            footer={footer()}
+            sections={sections()}
+            onCommentsChange={setComments}
+          />
         </Show>
       </main>
 

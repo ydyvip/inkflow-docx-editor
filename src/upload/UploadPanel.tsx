@@ -1,5 +1,5 @@
 import { createSignal, Show } from 'solid-js';
-import { parseDocx } from '../parser/parseDocx';
+import { parseDocx, DEFAULT_PAGE_SETUP } from '../parser/parseDocx';
 import { EMPTY_DOC } from '../schema';
 import { isElectron, openDocxViaDialog } from '../utils/desktop';
 import type { DocxComment } from '../parser/ooxml';
@@ -9,7 +9,11 @@ interface UploadPanelProps {
     json: any,
     fileName: string,
     warnings: string[],
-    comments: DocxComment[]
+    comments: DocxComment[],
+    pageSetup: any,
+    header: any | null,
+    footer: any | null,
+    sections: any[]
   ) => void;
 }
 
@@ -26,8 +30,9 @@ export function UploadPanel(props: UploadPanelProps) {
     setStatus('parsing');
     setError(null);
     try {
-      const { json, warnings, comments } = await parseDocx(file);
-      props.onParsed(json, file.name, warnings, comments);
+      const { json, warnings, comments, pageSetup, header, footer, sections } =
+        await parseDocx(file);
+      props.onParsed(json, file.name, warnings, comments, pageSetup, header, footer, sections);
       setStatus('idle');
     } catch (err) {
       setStatus('error');
@@ -35,7 +40,8 @@ export function UploadPanel(props: UploadPanelProps) {
     }
   };
 
-  const startBlank = () => props.onParsed(EMPTY_DOC, '未命名文档.docx', [], []);
+  const startBlank = () =>
+    props.onParsed(EMPTY_DOC, '未命名文档.docx', [], [], DEFAULT_PAGE_SETUP, null, null, []);
 
   // Electron 桌面环境：弹出系统「打开」对话框（与拖拽/选择共用同一解析流水线）
   const openFromDesktop = async () => {
@@ -47,7 +53,7 @@ export function UploadPanel(props: UploadPanelProps) {
         setStatus('idle'); // 用户取消了对话框
         return;
       }
-      props.onParsed(opened.json, opened.fileName, opened.warnings, opened.comments);
+      props.onParsed(opened.json, opened.fileName, opened.warnings, opened.comments, opened.pageSetup, opened.header, opened.footer, opened.sections);
       setStatus('idle');
     } catch (err) {
       setStatus('error');

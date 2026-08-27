@@ -285,7 +285,17 @@ async function buildInlineItems(
         : ((await remoteImageToDataUrl(src)) ?? '');
       const parsed = parseDataUrl(dataUrl);
       if (parsed) {
-        const dims = await getImageDimensions(dataUrl);
+        // 优先使用解析出的 OOXML 放置宽度（unit: px @96dpi -> docx.js transform 同单位），
+        // 否则退回图片原始分辨率（按最大宽度等比缩放）。
+        const natural = await getImageDimensions(dataUrl);
+        const attrsW = Number(node.attrs?.width);
+        const dims =
+          Number.isFinite(attrsW) && attrsW > 0
+            ? {
+                width: attrsW,
+                height: Math.round(attrsW * (natural.height / natural.width)),
+              }
+            : natural;
         items.push({
           child: new ImageRun({
             type: docxImageType(parsed.mime),

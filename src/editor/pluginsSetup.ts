@@ -37,7 +37,7 @@ export function buildEditorPlugins(schema: Schema) {
     inputRules({ rules: pluginInputRules }),
     dropCursor(),
     gapCursor(),
-    columnResizing({ View: AlignAwareTableView }),
+    columnResizing({ View: AlignAwareTableView, defaultCellMinWidth: 32 }),
     tableEditing(),
     history(),
     highlightPlugin(),
