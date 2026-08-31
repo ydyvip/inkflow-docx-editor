@@ -185,10 +185,41 @@ function withListStyleAttr(
       // 布局：以 w:ind 的左缩进（含悬挂基准）作为列表缩进，替换浏览器默认 padding。
       const indLeft = Number(node.attrs.indent) || 0;
       const hanging = Number(node.attrs.hanging) || 0;
-      if (indLeft > 0 || hanging > 0) {
-        const padLeft = (hanging > 0 ? Math.max(indLeft, hanging) : indLeft) / 15;
+      let padLeft = (hanging > 0 ? Math.max(indLeft, hanging) : indLeft) / 15 || 0;
+      let hasPad = padLeft > 0;
+      // 解析自 DOCX 的有序列表用"<w:ind 左缩进>"作为 marker 的悬挂空间。若 w:ind 的留白
+      // 不足以容纳实际 marker 文本（字母编号 "a）"、多位/全角 "（10）" 都比单个数字宽），
+      // list-style-position: outside 会把过宽的 marker 画得与正文重叠（字母显示异常）。
+      // 这里按本列表最宽的 marker 字样预留足够的左空间，窄 marker（如 "1."）的场景保持原样。
+      if (literal) {
+        const font = (node.attrs.font as
+          | { fontFamily: string | null; sizeHalfPt: number | null }
+          | null
+          | undefined);
+        const fsPx = font && font.sizeHalfPt ? Number(font.sizeHalfPt) / 2 * (96 / 72) : 16;
+        let widest = 0;
+        node.content.forEach((ch) => {
+          const m = ch.attrs && ch.attrs.marker;
+          if (typeof m === 'string' && m) {
+            let w = 0;
+            for (const c of m) {
+              const code = c.charCodeAt(0);
+              // 全角/CJK 字符按 1em，空格按 0.28em，其余 (半角字母/数字/标点) 按 0.55em
+              w += code >= 0x2e80 ? fsPx : code === 0x20 ? fsPx * 0.28 : fsPx * 0.55;
+            }
+            w += fsPx * 0.5; // ::marker 末尾追加的空格 "  "
+            if (w > widest) widest = w;
+          }
+        });
+        if (widest > padLeft) {
+          padLeft = widest + 2;
+          hasPad = true;
+        }
+      }
+      if (hasPad) {
         style.push(`padding-left:${padLeft.toFixed(2)}px;margin:0`);
-        // 非 literal（原生 marker）时用 text-indent 做悬挂缩进；literal 靠 ::before 行内渲染。
+        // 非 literal（原生 marker）时用 text-indent 做悬挂缩进；literal 通过为 marker
+        // 预留的左空间 + ::marker 渲染编号文本。
         if (hanging > 0 && !literal)
           style.push(`text-indent:${(-hanging / 15).toFixed(2)}px`);
       }
