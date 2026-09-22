@@ -443,6 +443,10 @@ button {
   line-height: 1.4;
   color: var(--color-ink-3);
   padding: 0;
+  /* 页眉/页脚容器是 flex，若不让 .ProseMirror 撑满容器宽度，它只会按内容
+     收缩成一条窄盒、被钉在左侧——即使段落上有 text-align:center/right 也不生效。 */
+  flex: 1 1 0;
+  width: 100%;
 }
 .vp-hf .ProseMirror p {
   margin: 0;

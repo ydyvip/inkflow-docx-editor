@@ -1609,18 +1609,39 @@ function parseHfInline(
   return out;
 }
 
+/** 判断一段页眉/页脚段落内容里是否包含页码域（PAGE / NUMPAGES / SECTIONPAGES） */
+function hasPageNumField(nodes: any[]): boolean {
+  for (const n of nodes) {
+    if (!n || typeof n !== 'object') continue;
+    if (n.type === 'text' && typeof n.text === 'string') {
+      if (
+        n.text.includes(FIELD_PAGE) ||
+        n.text.includes(FIELD_NUMPAGES) ||
+        n.text.includes(FIELD_SECTIONPAGES)
+      )
+        return true;
+    }
+    if (Array.isArray(n.content) && hasPageNumField(n.content)) return true;
+  }
+  return false;
+}
+
 /** 解析页眉/页脚里的一个段落 */
-function parseHfParagraph(pEl: Element, ctx: ParseCtx): any {
+function parseHfParagraph(pEl: Element, ctx: ParseCtx, inFooter = false): any {
   const pPr = child(pEl, 'pPr');
   const styleId = wAttr(child(pPr, 'pStyle'), 'val');
   const styleInfo = styleId ? (ctx.styles.get(styleId) ?? null) : null;
-  const align =
+  let align =
     normalizeAlign(wAttr(child(pPr, 'jc'), 'val')) ??
     styleInfo?.align ??
     null;
   const indent = parseIndentLevel(pPr) || (styleInfo?.indent ?? 0);
   const lineSpacing = parseLineSpacing(pPr);
   const inline = parseHfInline(pEl, styleInfo?.rPr ?? {});
+  // 页脚的"页码"段落没有显式对齐时默认居中：Word 插入页码的典型页脚（如
+  // “第 X 页”/“1”/“- 1 -”）往往不写 w:jc，真实渲染靠居中对齐；这里给出
+  // 与 Word 视觉一致的默认，避免预览里页码被钉在左侧。显式左/右对齐不受影响。
+  if (inFooter && !align && hasPageNumField(inline)) align = 'center';
   return {
     type: 'paragraph',
     attrs: {
@@ -1668,12 +1689,12 @@ function collectHfBlocks(el: Element, out: Element[]): void {
 }
 
 /** 解析页眉/页脚根元素（<w:hdr>/<w:ftr>）为 PM JSON 文档 */
-function parseHfRoot(rootEl: Element, ctx: ParseCtx): any {
+function parseHfRoot(rootEl: Element, ctx: ParseCtx, inFooter = false): any {
   const blocks: Element[] = [];
   collectHfBlocks(rootEl, blocks);
   const content: any[] = [];
   for (const el of blocks) {
-    if (el.localName === 'p') content.push(parseHfParagraph(el, ctx));
+    if (el.localName === 'p') content.push(parseHfParagraph(el, ctx, inFooter));
     else if (el.localName === 'tbl') content.push(parseTableEl(el, ctx));
   }
   return content.length ? { type: 'doc', content } : null;
@@ -1723,7 +1744,7 @@ async function loadHfFromSect(
     })(),
     sectBreaks: [],
   };
-  return parseHfRoot(xml.documentElement, ctx);
+  return parseHfRoot(xml.documentElement, ctx, kind === 'footerReference');
 }
 
 /** 读取正文 sectPr 引用的默认页眉/页脚，解析为 PM JSON 文档（旧接口，仅取单一默认节） */
